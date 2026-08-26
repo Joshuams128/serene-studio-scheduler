@@ -5,7 +5,9 @@ import type {
   Instructor,
   ScheduleAssignment,
 } from "./types";
-import { datesInMonth, dayOfDate, monthLabel } from "./period";
+import { isPerWeek } from "./types";
+import { datesInMonth, dayOfDate, monthLabel, weeksInMonth } from "./period";
+import { studioHoursSummary } from "./studio";
 
 /** Postgres `time` comes back as "09:00:00"; everything here compares "09:00". */
 function hhmm(time: string): string {
@@ -17,11 +19,21 @@ type PlannedClass = {
   requirementId: string;
   date: string;
   day: string;
+  week: number; // 1-indexed week of the month, matched against availability
   start: string;
   end: string;
   format: string;
   room: string | null;
 };
+
+/** date -> 1-indexed week of the month. Built once, reused everywhere. */
+export function weekMap(periodStart: string): Map<string, number> {
+  const map = new Map<string, number>();
+  weeksInMonth(periodStart).forEach((w, i) =>
+    w.dates.forEach((d) => map.set(d, i + 1))
+  );
+  return map;
+}
 
 /**
  * Expand the studio's weekly template across every week of the month.
@@ -33,6 +45,7 @@ export function planMonth(
   requirements: ClassRequirement[]
 ): PlannedClass[] {
   const active = requirements.filter((r) => r.active !== false);
+  const weeks = weekMap(periodStart);
   const classes: PlannedClass[] = [];
 
   for (const date of datesInMonth(periodStart)) {
@@ -43,6 +56,7 @@ export function planMonth(
         requirementId: r.id,
         date,
         day,
+        week: weeks.get(date) ?? 0,
         start: hhmm(r.start_time),
         end: hhmm(r.end_time),
         format: r.format,
@@ -121,16 +135,24 @@ export async function generateSchedule({
 
   const instructorData = instructors.map((i) => {
     const sub = submissions.find((s) => s.instructor_id === i.id);
+    const slots = sub?.available_slots ?? [];
+    const perWeek = isPerWeek(slots);
+
     return {
       id: i.id,
       name: i.name,
       formatsTaught: i.formats_taught,
-      // Weekly recurring windows — they apply to every week of the month.
-      availableSlots: (sub?.available_slots ?? []).map((s) => ({
-        day: s.day,
-        start: hhmm(s.start),
-        end: hhmm(s.end),
-      })),
+      availability: {
+        // Instructors either keep the same days all month, or set each week
+        // separately when some weeks differ.
+        mode: perWeek ? "varies by week" : "same every week",
+        windows: slots.map((s) => ({
+          week: typeof s.week === "number" ? s.week : "all",
+          day: s.day,
+          start: hhmm(s.start),
+          end: hhmm(s.end),
+        })),
+      },
       preferences: sub?.preferences ?? "",
       hasSubmitted: Boolean(sub),
     };
@@ -142,14 +164,24 @@ export async function generateSchedule({
     // truncate the tool call partway through a busy timetable.
     max_tokens: 16000,
     system:
-      "You are a scheduling assistant for a pilates studio. You are given every " +
-      "class that runs in one calendar month, each with a real date, plus each " +
-      "instructor's weekly availability, the formats they teach, and their " +
-      "written preferences. Assign an instructor to every class.\n\n" +
+      "You are a scheduling assistant for Serene Pilates, a pilates studio. You " +
+      "are given every class that runs in one calendar month, each with a real " +
+      "date and week number, plus each instructor's availability, the formats " +
+      "they teach, and their written preferences. Assign an instructor to " +
+      "every class.\n\n" +
+      "Availability windows carry a `week` field. `\"all\"` means the window " +
+      "applies to every week of the month. A number means it applies only to " +
+      "that week — instructors whose availability varies week to week set each " +
+      "week separately, so a window for week 2 says nothing about week 3.\n\n" +
+      "Studio opening hours (nothing runs outside these):\n" +
+      studioHoursSummary()
+        .map((h) => `- ${h.days}: ${h.hours}`)
+        .join("\n") +
+      "\n\n" +
       "Hard rules you must never break:\n" +
       "1. Only assign an instructor to a class that falls inside one of their " +
-      "weekly availability windows for that weekday (class start and end must " +
-      "both sit within a single window).\n" +
+      "availability windows for that weekday AND that week (class start and " +
+      "end must both sit within a single window).\n" +
       "2. Never assign an instructor to a format they don't teach.\n" +
       "3. Never double-book an instructor into two classes that overlap in time " +
       "on the same date.\n" +
@@ -173,13 +205,15 @@ export async function generateSchedule({
         role: "user",
         content:
           `Month: ${monthLabel(periodStart)} (starts ${periodStart})\n` +
-          `Weekdays are given per class; availability windows repeat weekly.\n\n` +
+          `Each class carries the weekday and week number to match against ` +
+          `availability windows.\n\n` +
           `Instructors:\n${JSON.stringify(instructorData, null, 2)}\n\n` +
           `Classes to fill (${classes.length}):\n${JSON.stringify(
-            classes.map(({ n, date, day, start, end, format, room }) => ({
+            classes.map(({ n, date, day, week, start, end, format, room }) => ({
               n,
               date,
               day,
+              week,
               start,
               end,
               format,
@@ -229,7 +263,12 @@ export async function generateSchedule({
     } satisfies ScheduleAssignment;
   });
 
-  const violations = enforceHardRules(assignments, instructors, submissions);
+  const violations = enforceHardRules(
+    assignments,
+    instructors,
+    submissions,
+    weekMap(periodStart)
+  );
 
   return {
     assignments,
@@ -250,7 +289,8 @@ export async function generateSchedule({
 function enforceHardRules(
   assignments: ScheduleAssignment[],
   instructors: Instructor[],
-  submissions: AvailabilitySubmission[]
+  submissions: AvailabilitySubmission[],
+  weeks: Map<string, number>
 ): string[] {
   const problems: string[] = [];
   const taken = new Map<string, ScheduleAssignment[]>(); // `${instructorId}|${date}`
@@ -281,9 +321,13 @@ function enforceHardRules(
       continue;
     }
 
+    // A window with no `week` repeats all month; a numbered one applies to
+    // that week only.
+    const week = weeks.get(a.date);
     const covered = submission.available_slots.some(
       (slot) =>
         slot.day === a.day &&
+        (slot.week == null || slot.week === week) &&
         hhmm(slot.start) <= a.start &&
         hhmm(slot.end) >= a.end
     );

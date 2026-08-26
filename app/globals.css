@@ -97,3 +97,23 @@
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
+
+/* Ring drawn around the element the dashboard tour is currently describing. */
+.tour-highlight {
+  position: relative;
+  z-index: 30;
+  border-radius: 1rem;
+  box-shadow:
+    0 0 0 3px var(--color-clay),
+    0 0 0 10px rgb(188 108 36 / 0.12);
+  transition: box-shadow 0.3s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tour-highlight {
+    transition: none;
+  }
+  html {
+    scroll-behavior: auto;
+  }
+}

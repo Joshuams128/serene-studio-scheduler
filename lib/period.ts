@@ -108,6 +108,21 @@ export function formatDateShort(date: string): string {
 export type Week = { index: number; label: string; dates: string[] };
 
 /**
+ * Which week of the month a date falls in, 1-indexed to match the `week` field
+ * on an availability slot. Returns 0 if the date isn't in this month at all.
+ */
+export function weekNumberForDate(periodStart: string, date: string): number {
+  const weeks = weeksInMonth(periodStart);
+  const idx = weeks.findIndex((w) => w.dates.includes(date));
+  return idx === -1 ? 0 : idx + 1;
+}
+
+/** The weekdays that actually occur in a week — the first and last are partial. */
+export function daysInWeek(week: Week): Day[] {
+  return week.dates.map(dayOfDate);
+}
+
+/**
  * The month split into Monday-started weeks, keeping only the dates that fall
  * inside the month itself — the first and last week are usually partial.
  */

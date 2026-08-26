@@ -1,10 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { AvailabilitySubmission, AvailabilitySlot } from "@/lib/types";
-import { DAYS, DAY_LABELS, monthLabel, type Day } from "@/lib/period";
+import { isPerWeek } from "@/lib/types";
+import {
+  DAYS,
+  DAY_LABELS,
+  dayOfDate,
+  formatDateShort,
+  monthLabel,
+  weeksInMonth,
+  type Day,
+} from "@/lib/period";
+import { STUDIO_HOURS, studioHoursLabel } from "@/lib/studio";
 import SiteHeader from "@/components/SiteHeader";
 import {
+  Badge,
   Button,
   Card,
   Input,
@@ -15,14 +26,37 @@ import {
 } from "@/components/ui";
 
 type Range = { start: string; end: string };
-const DEFAULT_RANGE: Range = { start: "09:00", end: "12:00" };
+type DayMap = Record<Day, Range[]>;
 
-/** Flat slot list from the database → one bucket of time ranges per weekday. */
-function toDayMap(slots: AvailabilitySlot[]): Record<Day, Range[]> {
-  const map = Object.fromEntries(DAYS.map((d) => [d, [] as Range[]])) as Record<
-    Day,
-    Range[]
-  >;
+/** Turning a day on offers the studio's full opening hours for it. */
+function studioRanges(day: Day): Range[] {
+  return STUDIO_HOURS[day].map((w) => ({ ...w }));
+}
+
+/** Every day of the week, filled with the studio's open hours. */
+function fullStudioWeek(days: Day[]): DayMap {
+  const map = emptyDayMap();
+  for (const day of days) map[day] = studioRanges(day);
+  return map;
+}
+
+function emptyDayMap(): DayMap {
+  return Object.fromEntries(DAYS.map((d) => [d, [] as Range[]])) as DayMap;
+}
+
+function cloneDayMap(map: DayMap): DayMap {
+  return Object.fromEntries(
+    DAYS.map((d) => [d, map[d].map((r) => ({ ...r }))])
+  ) as DayMap;
+}
+
+function countRanges(map: DayMap): number {
+  return DAYS.reduce((n, d) => n + map[d].length, 0);
+}
+
+/** Slots for one week (or the repeating pattern) → per-weekday buckets. */
+function toDayMap(slots: AvailabilitySlot[]): DayMap {
+  const map = emptyDayMap();
   for (const slot of slots) {
     if (map[slot.day]) {
       map[slot.day].push({
@@ -33,6 +67,137 @@ function toDayMap(slots: AvailabilitySlot[]): Record<Day, Range[]> {
   }
   return map;
 }
+
+/* ---------------------------------------------------------------------------
+   One week's (or the repeating pattern's) seven day rows.
+--------------------------------------------------------------------------- */
+
+function DayScheduleEditor({
+  value,
+  onChange,
+  days,
+  dateFor,
+}: {
+  value: DayMap;
+  onChange: (next: DayMap) => void;
+  /** Which weekdays to show — a partial week doesn't have all seven. */
+  days: Day[];
+  /** Optional real date to show beside each day, in per-week mode. */
+  dateFor?: (day: Day) => string | undefined;
+}) {
+  function setRanges(day: Day, ranges: Range[]) {
+    onChange({ ...value, [day]: ranges });
+  }
+
+  return (
+    <div className="divide-y divide-mist/30">
+      {days.map((day) => {
+        const ranges = value[day];
+        const on = ranges.length > 0;
+        const date = dateFor?.(day);
+
+        return (
+          <div key={day} className="px-6 py-4">
+            <div className="flex items-center justify-between gap-4">
+              <span
+                className={`text-sm font-medium transition-colors ${
+                  on ? "text-ink" : "text-sage"
+                }`}
+              >
+                {DAY_LABELS[day]}
+                {date && (
+                  <span className="ml-2 text-xs font-light text-sage">
+                    {date}
+                  </span>
+                )}
+                <span className="mt-0.5 block text-xs font-light text-sage">
+                  Studio open {studioHoursLabel(day)}
+                </span>
+              </span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={on}
+                aria-label={`Available on ${DAY_LABELS[day]}${date ? ` ${date}` : ""}`}
+                onClick={() => setRanges(day, on ? [] : studioRanges(day))}
+                className={`relative h-6 w-11 shrink-0 rounded-full transition-colors duration-200 ${
+                  on ? "bg-sage" : "bg-mist/60"
+                }`}
+              >
+                <span
+                  className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200 ${
+                    on ? "translate-x-[1.375rem]" : "translate-x-0.5"
+                  }`}
+                />
+              </button>
+            </div>
+
+            {on && (
+              <div className="mt-3 space-y-2">
+                {ranges.map((range, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <Input
+                      type="time"
+                      value={range.start}
+                      onChange={(e) =>
+                        setRanges(
+                          day,
+                          ranges.map((r, idx) =>
+                            idx === i ? { ...r, start: e.target.value } : r
+                          )
+                        )
+                      }
+                      className="w-32 py-2"
+                      aria-label={`${DAY_LABELS[day]} start time`}
+                    />
+                    <span className="text-sm font-light text-sage">to</span>
+                    <Input
+                      type="time"
+                      value={range.end}
+                      onChange={(e) =>
+                        setRanges(
+                          day,
+                          ranges.map((r, idx) =>
+                            idx === i ? { ...r, end: e.target.value } : r
+                          )
+                        )
+                      }
+                      className="w-32 py-2"
+                      aria-label={`${DAY_LABELS[day]} end time`}
+                    />
+                    {ranges.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setRanges(day, ranges.filter((_, idx) => idx !== i))
+                        }
+                        aria-label="Remove this time range"
+                        className="rounded-md px-2 py-1 text-sage transition-colors hover:text-[#a4442c]"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() =>
+                    setRanges(day, [...ranges, { ...STUDIO_HOURS[day][0] }])
+                  }
+                  className="text-sm font-medium text-clay transition-opacity hover:opacity-70"
+                >
+                  + Add another window
+                </button>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------------- */
 
 export default function IntakeForm({
   token,
@@ -49,9 +214,26 @@ export default function IntakeForm({
   studioFormats: string[];
   existing: AvailabilitySubmission | null;
 }) {
-  const [days, setDays] = useState<Record<Day, Range[]>>(
-    toDayMap(existing?.available_slots ?? [])
+  const weeks = useMemo(() => weeksInMonth(periodStart), [periodStart]);
+
+  const existingSlots = existing?.available_slots ?? [];
+  const startedPerWeek = isPerWeek(existingSlots);
+
+  // Two independent drafts, so ticking the box back and forth never destroys
+  // work: the repeating pattern and the per-week one both stay in state.
+  const [repeatsWeekly, setRepeatsWeekly] = useState(!startedPerWeek);
+  const [weekly, setWeekly] = useState<DayMap>(() =>
+    startedPerWeek ? emptyDayMap() : toDayMap(existingSlots)
   );
+  const [byWeek, setByWeek] = useState<DayMap[]>(() =>
+    weeks.map((_, i) =>
+      startedPerWeek
+        ? toDayMap(existingSlots.filter((s) => s.week === i + 1))
+        : emptyDayMap()
+    )
+  );
+  const [activeWeek, setActiveWeek] = useState(0);
+
   const [formats, setFormats] = useState<string[]>(formatsTaught);
   const [customFormat, setCustomFormat] = useState("");
   const [preferences, setPreferences] = useState(existing?.preferences ?? "");
@@ -60,15 +242,19 @@ export default function IntakeForm({
   );
   const [error, setError] = useState("");
 
-  // Studio classes plus anything this instructor already had on file.
   const formatOptions = [...new Set([...studioFormats, ...formats])].sort();
 
-  function setRanges(day: Day, ranges: Range[]) {
-    setDays((prev) => ({ ...prev, [day]: ranges }));
+  /** Switching to per-week seeds every week from the repeating pattern, so
+   *  they only have to change the week that's actually different. */
+  function setMode(weekly_: boolean) {
+    if (!weekly_ && byWeek.every((w) => countRanges(w) === 0)) {
+      setByWeek(weeks.map(() => cloneDayMap(weekly)));
+    }
+    setRepeatsWeekly(weekly_);
   }
 
-  function toggleDay(day: Day) {
-    setRanges(day, days[day].length > 0 ? [] : [{ ...DEFAULT_RANGE }]);
+  function copyWeekToAll(from: number) {
+    setByWeek((prev) => prev.map(() => cloneDayMap(prev[from])));
   }
 
   function toggleFormat(format: string) {
@@ -84,15 +270,28 @@ export default function IntakeForm({
     setCustomFormat("");
   }
 
-  const totalRanges = DAYS.reduce((n, d) => n + days[d].length, 0);
+  const totalRanges = repeatsWeekly
+    ? countRanges(weekly)
+    : byWeek.reduce((n, w) => n + countRanges(w), 0);
 
   async function submit() {
     setStatus("saving");
     setError("");
 
-    const availableSlots: AvailabilitySlot[] = DAYS.flatMap((day) =>
-      days[day].map((r) => ({ day, start: r.start, end: r.end }))
-    );
+    const availableSlots: AvailabilitySlot[] = repeatsWeekly
+      ? DAYS.flatMap((day) =>
+          weekly[day].map((r) => ({ day, start: r.start, end: r.end }))
+        )
+      : byWeek.flatMap((map, i) =>
+          DAYS.flatMap((day) =>
+            map[day].map((r) => ({
+              day,
+              start: r.start,
+              end: r.end,
+              week: i + 1,
+            }))
+          )
+        );
 
     const res = await fetch("/api/availability", {
       method: "POST",
@@ -145,6 +344,9 @@ export default function IntakeForm({
   }
 
   /* --- Form -------------------------------------------------------------- */
+
+  const week = weeks[activeWeek];
+  const weekDays = week ? [...new Set(week.dates.map(dayOfDate))] : DAYS.slice();
 
   return (
     <>
@@ -234,118 +436,139 @@ export default function IntakeForm({
         <Card>
           <SectionHeader
             title="When are you free?"
-            description="Turn on the days you can teach and set the hours you're around. These apply to every week of the month — note any one-off dates at the bottom."
+            description="Turn on the days you can teach and set the hours you're around."
           />
-          <div className="divide-y divide-mist/30">
-            {DAYS.map((day) => {
-              const ranges = days[day];
-              const on = ranges.length > 0;
 
-              return (
-                <div key={day} className="px-6 py-4">
-                  <div className="flex items-center justify-between gap-4">
-                    <span
-                      className={`text-sm font-medium transition-colors ${
-                        on ? "text-ink" : "text-sage"
-                      }`}
-                    >
-                      {DAY_LABELS[day]}
-                    </span>
+          {/* The shortcut: most people keep the same days all month. */}
+          <label className="flex cursor-pointer items-start gap-3 border-b border-mist/40 bg-paper/60 px-6 py-4">
+            <input
+              type="checkbox"
+              checked={repeatsWeekly}
+              onChange={(e) => setMode(e.target.checked)}
+              className="mt-0.5 h-5 w-5 shrink-0 cursor-pointer rounded border-mist accent-[#BC6C24]"
+            />
+            <span>
+              <span className="block text-sm font-medium text-ink">
+                My days are the same every week
+              </span>
+              <span className="mt-0.5 block text-xs font-light leading-relaxed text-fern">
+                Fill it in once and we&apos;ll use it for all{" "}
+                {weeks.length} weeks of {monthLabel(periodStart)}. Untick if some
+                weeks are different.
+              </span>
+            </span>
+          </label>
+
+          {repeatsWeekly ? (
+            <>
+              <div className="flex justify-end px-6 pt-4">
+                <button
+                  type="button"
+                  onClick={() => setWeekly(fullStudioWeek(DAYS.slice()))}
+                  className="text-sm font-medium text-clay transition-opacity hover:opacity-70"
+                >
+                  I&apos;m free whenever the studio is open
+                </button>
+              </div>
+              <DayScheduleEditor
+                value={weekly}
+                onChange={setWeekly}
+                days={DAYS.slice()}
+              />
+            </>
+          ) : (
+            <>
+              {/* Week picker — the count shows which weeks still need filling. */}
+              <div className="flex gap-2 overflow-x-auto border-b border-mist/40 px-6 py-4">
+                {weeks.map((w, i) => {
+                  const filled = countRanges(byWeek[i]);
+                  const active = i === activeWeek;
+                  return (
                     <button
+                      key={w.index}
                       type="button"
-                      role="switch"
-                      aria-checked={on}
-                      aria-label={`Available on ${DAY_LABELS[day]}`}
-                      onClick={() => toggleDay(day)}
-                      className={`relative h-6 w-11 shrink-0 rounded-full transition-colors duration-200 ${
-                        on ? "bg-sage" : "bg-mist/60"
+                      onClick={() => setActiveWeek(i)}
+                      aria-current={active}
+                      className={`shrink-0 rounded-xl border px-3.5 py-2 text-left transition-all duration-200 ${
+                        active
+                          ? "border-clay bg-clay/8 text-ink"
+                          : "border-mist/60 bg-white text-fern hover:border-sage"
                       }`}
                     >
+                      <span className="block text-sm font-medium">
+                        Week {i + 1}
+                      </span>
+                      <span className="mt-0.5 block text-xs font-light text-sage">
+                        {formatDateShort(w.dates[0])}–
+                        {formatDateShort(w.dates[w.dates.length - 1])}
+                      </span>
                       <span
-                        className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200 ${
-                          on ? "translate-x-[1.375rem]" : "translate-x-0.5"
+                        className={`mt-1 block text-[0.6875rem] font-medium ${
+                          filled > 0 ? "text-sage" : "text-sand"
                         }`}
-                      />
-                    </button>
-                  </div>
-
-                  {on && (
-                    <div className="mt-3 space-y-2">
-                      {ranges.map((range, i) => (
-                        <div key={i} className="flex items-center gap-2">
-                          <Input
-                            type="time"
-                            value={range.start}
-                            onChange={(e) =>
-                              setRanges(
-                                day,
-                                ranges.map((r, idx) =>
-                                  idx === i ? { ...r, start: e.target.value } : r
-                                )
-                              )
-                            }
-                            className="w-32 py-2"
-                            aria-label={`${DAY_LABELS[day]} start time`}
-                          />
-                          <span className="text-sm font-light text-sage">to</span>
-                          <Input
-                            type="time"
-                            value={range.end}
-                            onChange={(e) =>
-                              setRanges(
-                                day,
-                                ranges.map((r, idx) =>
-                                  idx === i ? { ...r, end: e.target.value } : r
-                                )
-                              )
-                            }
-                            className="w-32 py-2"
-                            aria-label={`${DAY_LABELS[day]} end time`}
-                          />
-                          {ranges.length > 1 && (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setRanges(
-                                  day,
-                                  ranges.filter((_, idx) => idx !== i)
-                                )
-                              }
-                              aria-label="Remove this time range"
-                              className="rounded-md px-2 py-1 text-sage transition-colors hover:text-[#a4442c]"
-                            >
-                              ✕
-                            </button>
-                          )}
-                        </div>
-                      ))}
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setRanges(day, [...ranges, { ...DEFAULT_RANGE }])
-                        }
-                        className="text-sm font-medium text-clay transition-opacity hover:opacity-70"
                       >
-                        + Add another window
-                      </button>
-                    </div>
-                  )}
+                        {filled > 0 ? `${filled} window${filled === 1 ? "" : "s"}` : "Not set"}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 px-6 pt-4">
+                <Badge tone="mist">
+                  Editing week {activeWeek + 1} of {weeks.length}
+                </Badge>
+                <div className="flex flex-wrap gap-x-4 gap-y-1">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setByWeek((prev) =>
+                        prev.map((w, i) =>
+                          i === activeWeek ? fullStudioWeek(weekDays) : w
+                        )
+                      )
+                    }
+                    className="text-sm font-medium text-clay transition-opacity hover:opacity-70"
+                  >
+                    Free all open hours
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => copyWeekToAll(activeWeek)}
+                    className="text-sm font-medium text-clay transition-opacity hover:opacity-70"
+                  >
+                    Copy to all {weeks.length} weeks
+                  </button>
                 </div>
-              );
-            })}
-          </div>
+              </div>
+
+              <DayScheduleEditor
+                value={byWeek[activeWeek]}
+                onChange={(next) =>
+                  setByWeek((prev) =>
+                    prev.map((w, i) => (i === activeWeek ? next : w))
+                  )
+                }
+                days={weekDays}
+                dateFor={(day) => {
+                  const date = week?.dates.find((d) => dayOfDate(d) === day);
+                  return date ? formatDateShort(date) : undefined;
+                }}
+              />
+            </>
+          )}
         </Card>
 
         {/* --- Preferences --- */}
         <Card>
           <SectionHeader
             title="Anything else we should know?"
-            description="Preferences and time off both go here — it's read alongside your availability when the schedule is drafted."
+            description="Preferences go here — it's read alongside your availability when the schedule is drafted."
           />
           <div className="px-6 py-5">
             <Textarea
               rows={4}
-              placeholder="e.g. I'd rather not do back-to-back classes, mornings suit me best, and I'm away the last week of the month."
+              placeholder="e.g. I'd rather not do back-to-back classes, and mornings suit me best."
               value={preferences}
               onChange={(e) => setPreferences(e.target.value)}
             />

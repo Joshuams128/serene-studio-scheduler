@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useSyncExternalStore, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type {
   AvailabilitySubmission,
@@ -12,9 +12,61 @@ import { addMonths, monthLabel, monthLabelShort } from "@/lib/period";
 import SiteHeader from "@/components/SiteHeader";
 import LogoutButton from "@/components/LogoutButton";
 import ScheduleGrid from "@/components/ScheduleGrid";
+import Tour, { TourButton, hasSeenTour, type TourStep } from "@/components/Tour";
 import { Button, Card, Note, SectionHeader } from "@/components/ui";
 import InstructorsPanel from "./InstructorsPanel";
 import RequirementsPanel from "./RequirementsPanel";
+
+const TOUR_STEPS: TourStep[] = [
+  {
+    title: "Welcome to your scheduler",
+    body: "This builds next month's class schedule for you from your instructors' availability, so you're tweaking a draft instead of starting from a blank calendar. Here's the quick tour — about a minute.",
+  },
+  {
+    target: "tour-period",
+    title: "You're planning one month at a time",
+    body: "It opens on the month you're about to build. Use the ‹ and › arrows to look back at a month that's already running, or jump further ahead.",
+  },
+  {
+    target: "tour-team",
+    title: "Step 1 — your instructors",
+    body: "Add each instructor here, then hit “Copy link” and send them their private link by text or email. No passwords for them. You'll see “Waiting” turn into “Submitted” as they reply — click “View” to read exactly what someone sent.",
+  },
+  {
+    target: "tour-template",
+    title: "Step 2 — the classes you run each week",
+    body: "Set your usual weekly timetable once — Reformer on Mondays at 7, and so on. It carries over month to month, so this is a one-time job. Times default to your studio's opening hours.",
+  },
+  {
+    target: "tour-draft",
+    title: "Step 3 — draft the schedule",
+    body: "Once a couple of instructors have replied, press this. It spreads your weekly classes across every date in the month and picks who teaches each one, matching everyone's availability, what they teach, and their requests.",
+  },
+  {
+    target: "tour-schedule",
+    title: "Then change whatever you like",
+    body: "Every class gets a dropdown, so swapping someone is one click. You'll see a plain-English summary of what it did, anything it couldn't fill, and each instructor's class count so you can check it's fair.",
+  },
+  {
+    target: "tour-schedule",
+    title: "Save, approve, or start over",
+    body: "“Save changes” keeps your edits, “Approve schedule” marks it final. Not happy with it? “Delete draft” clears the month completely, or “Re-draft schedule” up top just tries again.",
+  },
+  {
+    target: "tour-schedule",
+    title: "Then email it to everyone",
+    body: "Down at the bottom, “Send to instructors” emails the month out — each person gets their own classes at the top and the full timetable below. Preview it first if you like, and it'll tell you if anyone is missing an email address.",
+  },
+  {
+    title: "That's everything",
+    body: "Need this again? The ? button in the top corner replays the tour any time.",
+  },
+];
+
+/** localStorage has no change events worth wiring up here. */
+function subscribeNothing() {
+  return () => {};
+}
 
 export default function DashboardClient({
   periodStart,
@@ -38,6 +90,18 @@ export default function DashboardClient({
   const [schedule, setSchedule] = useState(initialSchedule);
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState("");
+  // Whether to run the tour unprompted. Read through useSyncExternalStore so
+  // the server renders "no tour" and the client decides on hydration — reading
+  // localStorage during render would mismatch, and doing it in an effect would
+  // mean an extra render pass.
+  const autoRun = useSyncExternalStore(
+    subscribeNothing,
+    () => !hasSeenTour(),
+    () => false
+  );
+  // null = follow autoRun; true/false = the owner opened or closed it by hand.
+  const [tourOverride, setTourOverride] = useState<boolean | null>(null);
+  const tourOpen = tourOverride ?? autoRun;
 
   function goToMonth(offset: number) {
     startNavigating(() => {
@@ -66,13 +130,21 @@ export default function DashboardClient({
 
   return (
     <>
-      <SiteHeader href={null} right={<LogoutButton />} />
+      <SiteHeader
+        href={null}
+        right={
+          <>
+            <TourButton onClick={() => setTourOverride(true)} />
+            <LogoutButton />
+          </>
+        }
+      />
 
       {/* --- Period band ---------------------------------------------- */}
       <div className="border-b border-mist/30 bg-[radial-gradient(120%_140%_at_20%_-40%,#FEFAE0_0%,#FAF8F3_60%)]">
         <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
           <div className="flex flex-wrap items-end justify-between gap-6">
-            <div>
+            <div id="tour-period">
               <p className="eyebrow text-sand">Monthly schedule</p>
               <div className="mt-1.5 flex items-center gap-3">
                 <button
@@ -97,7 +169,7 @@ export default function DashboardClient({
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-6">
+            <div id="tour-draft" className="flex flex-wrap items-center gap-6">
               <div className="min-w-[13rem]">
                 <p className="text-sm font-light text-fern">
                   <span className="font-medium text-ink">{submitted}</span> of{" "}
@@ -135,19 +207,23 @@ export default function DashboardClient({
 
       <main className="mx-auto max-w-6xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
         <div className="grid gap-6 lg:grid-cols-2">
-          <InstructorsPanel
-            periodStart={periodStart}
-            instructors={instructors}
-            submissions={submissions}
-            onChange={setInstructors}
-          />
-          <RequirementsPanel
-            requirements={requirements}
-            onChange={setRequirements}
-          />
+          <div id="tour-team">
+            <InstructorsPanel
+              periodStart={periodStart}
+              instructors={instructors}
+              submissions={submissions}
+              onChange={setInstructors}
+            />
+          </div>
+          <div id="tour-template">
+            <RequirementsPanel
+              requirements={requirements}
+              onChange={setRequirements}
+            />
+          </div>
         </div>
 
-        <Card>
+        <Card id="tour-schedule">
           <SectionHeader
             eyebrow="Step 3"
             title={`Draft for ${monthLabel(periodStart)}`}
@@ -186,6 +262,10 @@ export default function DashboardClient({
           </div>
         </Card>
       </main>
+
+      {tourOpen && (
+        <Tour steps={TOUR_STEPS} onClose={() => setTourOverride(false)} />
+      )}
 
       <footer className="mx-auto max-w-6xl px-4 pb-12 sm:px-6 lg:px-8">
         <p className="border-t border-mist/40 pt-6 text-xs font-light text-sage">

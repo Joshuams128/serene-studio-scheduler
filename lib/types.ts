@@ -12,7 +12,18 @@ export type AvailabilitySlot = {
   day: "Mon" | "Tue" | "Wed" | "Thu" | "Fri" | "Sat" | "Sun";
   start: string; // "06:00"
   end: string; // "12:00"
+  /**
+   * 1-indexed week of the month this window applies to. Omitted (or null) means
+   * "every week" — the common case, where an instructor keeps the same days all
+   * month. A submission is in per-week mode if any of its slots carry a `week`.
+   */
+  week?: number | null;
 };
+
+/** True when this submission varies week to week rather than repeating. */
+export function isPerWeek(slots: AvailabilitySlot[]): boolean {
+  return slots.some((s) => typeof s.week === "number");
+}
 
 export type AvailabilitySubmission = {
   id: string;
@@ -60,4 +71,7 @@ export type Schedule = {
   notes: string;
   generated_at: string;
   approved_at: string | null;
+  /** When this schedule was last emailed out, and to how many instructors. */
+  sent_at: string | null;
+  sent_to_count: number;
 };
