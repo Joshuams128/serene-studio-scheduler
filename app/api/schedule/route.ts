@@ -42,3 +42,21 @@ export async function PUT(req: Request) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ schedule: data });
 }
+
+// Throw the draft away so the owner can re-run the generator from scratch —
+// the "redo" escape hatch when a draft isn't worth editing.
+export async function DELETE(req: Request) {
+  if (!(await isAuthed())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { searchParams } = new URL(req.url);
+  const periodStart = searchParams.get("periodStart");
+  if (!periodStart) return NextResponse.json({ error: "Missing periodStart" }, { status: 400 });
+
+  const { error } = await supabaseAdmin()
+    .from("schedules")
+    .delete()
+    .eq("period_start", periodStart);
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ ok: true });
+}

@@ -34,15 +34,23 @@ export type ClassRequirement = {
 };
 
 export type ScheduleAssignment = {
+  /** Stable key for a single class in the month: requirement + calendar date. */
   requirementId: string;
-  day: string;
+  date: string; // "2026-09-08" — the actual day this class runs
+  day: string; // "Mon" .. "Sun", derived from `date`
   start: string;
   end: string;
   format: string;
+  room?: string | null;
   instructorId: string | null;
   instructorName: string | null;
   note?: string;
 };
+
+/** Assignments are keyed by requirement *and* date — a weekly class recurs. */
+export function assignmentKey(a: Pick<ScheduleAssignment, "requirementId" | "date">) {
+  return `${a.requirementId}__${a.date}`;
+}
 
 export type Schedule = {
   id: string;

@@ -5,7 +5,8 @@ import { supabaseAdmin } from "@/lib/supabase";
 // invite token, not a login. Only the token owner can see/submit their own
 // availability; this route never returns other instructors' data.
 export async function POST(req: Request) {
-  const { token, periodStart, availableSlots, preferences } = await req.json();
+  const { token, periodStart, availableSlots, preferences, formatsTaught } =
+    await req.json();
 
   if (!token || !periodStart) {
     return NextResponse.json({ error: "Missing token or periodStart" }, { status: 400 });
@@ -21,6 +22,16 @@ export async function POST(req: Request) {
 
   if (lookupError || !instructor) {
     return NextResponse.json({ error: "Invalid link" }, { status: 404 });
+  }
+
+  // Instructors confirm what they teach on the same form, so keep their
+  // profile in step with what they just told us. Scoped by their own token —
+  // they can only ever edit their own record.
+  if (Array.isArray(formatsTaught)) {
+    await db
+      .from("instructors")
+      .update({ formats_taught: formatsTaught.filter(Boolean) })
+      .eq("id", instructor.id);
   }
 
   const { error } = await db.from("availability_submissions").upsert(

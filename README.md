@@ -1,86 +1,118 @@
-# Studio Scheduler (trial build)
+# Serene Pilates · Studio Scheduler
 
-A small internal tool: instructors submit their availability through a
-personal link, and the studio owner generates a draft weekly class schedule
-with one click (Claude does the balancing), then edits and approves it.
+An internal tool for Serene Pilates. Instructors submit their availability and
+what they teach; the studio owner gets a complete month of classes drafted for
+them, then tweaks it instead of building it from a blank calendar.
 
-## Stack
+Styled to match [serenepilates.ca](https://www.serenepilates.ca) — same palette,
+same Inter typography, same logo.
 
-- Next.js 16 (App Router, TypeScript, Tailwind)
-- Supabase (Postgres) — data storage, accessed server-side only
-- Claude API (Sonnet) — drafts the schedule from availability + requirements
-- Deploys to Vercel
-
-## 1. Database (Supabase)
-
-1. Create a project at [supabase.com](https://supabase.com) (or reuse an
-   existing one — this app's tables live under `public` and won't collide
-   with anything else, as long as those table names aren't already in use).
-2. In the Supabase SQL Editor, run everything in `supabase/schema.sql`.
-3. From Project Settings → API, grab:
-   - **Project URL** → `SUPABASE_URL`
-   - **service_role key** (not the anon key — this app uses the service role
-     key server-side only, since every table has Row Level Security on with
-     no policies) → `SUPABASE_SERVICE_ROLE_KEY`
-
-## 2. Claude API key
-
-Create a key at [platform.claude.com](https://platform.claude.com) →
-`ANTHROPIC_API_KEY`. Costs for this tool are tiny — a generated schedule run
-is a few cents at most; see the note you sent along with this.
-
-## 3. Local setup
-
-```bash
-npm install
-cp .env.example .env.local   # fill in the three values above, plus OWNER_PASSWORD
-npm run dev
-```
-
-Visit `http://localhost:3000`, log in with `OWNER_PASSWORD`, add an
-instructor, and copy their invite link to test the intake form.
-
-## 4. Push to GitHub
-
-```bash
-git remote add origin <your-empty-repo-url>
-git push -u origin main
-```
-
-## 5. Deploy on Vercel
-
-1. Import the GitHub repo in the Vercel dashboard.
-2. Add the four environment variables from `.env.local` in Project Settings
-   → Environment Variables (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
-   `ANTHROPIC_API_KEY`, `OWNER_PASSWORD`).
-3. Deploy. Every push to `main` redeploys automatically, same as your other
-   repos.
+---
 
 ## How it works
 
-- **Owner dashboard** (`/dashboard`, password-gated): add instructors and
-  get their invite link, set up the studio's required weekly class slots,
-  generate a draft schedule, edit it in the grid, and approve it.
-- **Instructor intake** (`/instructor/[token]`): no login — the link itself
-  is the access. Instructor submits their weekly availability and any notes.
-- **Generation**: pulls all availability + the required slots, sends it to
-  Claude with a forced structured-output tool call so the response always
-  comes back as clean, parseable JSON (day/time/format/instructor) rather
-  than free text you'd have to parse yourself. Claude is told the hard rules
-  (never double-book, never assign a format someone doesn't teach) and does
-  best-effort on soft preferences, and leaves a slot unassigned rather than
-  break a rule — flagging it in the summary.
-- **Editing**: the generated grid is fully editable before approving —
-  nothing is final until the owner says so.
+There are two screens, and only one of them needs a password.
 
-## What's intentionally left out of this trial version
+### The instructor's screen — `/instructor/<their-token>`
 
-- No Hapana integration — pulling class-demand/attendance data from Hapana
-  automatically wasn't clearly documented as a public API, so this version
-  treats availability + fairness as the only inputs. Worth revisiting once
-  it's confirmed what data Hapana actually exposes.
-- No per-instructor login — a single owner password plus unique instructor
-  links is enough for a free trial with one studio. Would want real auth
-  (NextAuth, etc.) if this becomes a permanent tool.
-- No automatic reminders to instructors who haven't submitted yet — could
-  add a Resend email nudge if that turns out to be needed.
+Each instructor gets a **private link** with a token in it. No account, no
+password: the link *is* their access, and it only ever shows their own details.
+The owner copies it from the dashboard and sends it however they like (text,
+email, WhatsApp).
+
+On that page an instructor:
+
+1. **Taps what they teach.** The formats the studio actually runs are offered as
+   chips, so this stays accurate; they can add anything missing.
+2. **Turns on the days they're free** and sets the hours for each. These are
+   weekly windows — "Mondays 8am–12pm" — that apply to every week of the month.
+3. **Adds anything else in one text box** — "mornings only", "no back-to-back
+   classes", "away the last week". This is read in full when the schedule is
+   drafted, so one-off time off goes here rather than needing its own field.
+
+They can reopen the link any time before the schedule goes out; the form comes
+back pre-filled and re-submitting replaces their previous answer.
+
+### The owner's screen — `/dashboard`
+
+Behind the single studio password (`OWNER_PASSWORD`). It opens on **next month**
+— the one being planned — with ‹ › in the header to reach any other month.
+
+Three numbered steps, top to bottom:
+
+1. **Your team** — add instructors, copy each one's private link, and watch
+   "Waiting" flip to "Submitted" as they come in. Click **View** on anyone who
+   has submitted to see their exact windows and what they wrote.
+2. **Weekly class template** — the classes the studio runs every week
+   ("Reformer, Mondays 9am"). Set once; it carries month to month.
+3. **Draft for `<month>`** — press **Draft the schedule**.
+
+The draft is a real month: the weekly template expanded across every week, each
+class on its actual date, grouped by week. Every row has an instructor dropdown,
+so changing someone is one click. Above the table you get a plain-language
+summary of what the draft did and where it got stuck, a count of anything still
+needing cover, and each instructor's class count so you can eyeball fairness.
+
+Then either:
+
+- **Save changes** — keep editing later.
+- **Approve schedule** — mark it final.
+- **Delete draft** — throw it away and start over. Asks once, then it's gone and
+  the month is blank again. **Re-draft schedule** in the header does the same
+  thing in one step if you just want a different attempt.
+
+---
+
+## How the drafting works
+
+Dates are computed in code, not guessed: the weekly template is expanded across
+the real calendar month first, so no class is ever dropped or invented. Claude
+is then asked only to choose *who* covers each class, given everyone's
+availability, formats, and written preferences.
+
+Four rules are treated as hard, and every assignment is re-checked against them
+in code afterwards — anything that breaks one is cleared and called out in the
+summary rather than quietly shipped:
+
+1. The class must sit inside one of that instructor's submitted windows.
+2. They must teach that format.
+3. No overlapping classes on the same day.
+4. Nobody who hasn't submitted gets assigned.
+
+Beyond that it balances the load across the month, keeps each instructor's week
+consistent, and tries to give the same person the same recurring class each week
+so members see a familiar face. When it can't fill something without breaking a
+rule, it leaves the slot empty and says why.
+
+---
+
+## Setup
+
+1. **Database** — run [`supabase/schema.sql`](supabase/schema.sql) against your
+   Supabase project (SQL Editor → paste → run). RLS is on with no policies; the
+   app only ever reaches the database server-side with the service role key.
+
+2. **Environment** — copy `.env.example` to `.env.local` and fill in:
+
+   | Variable | Where it comes from |
+   | --- | --- |
+   | `SUPABASE_URL` | Project Settings → Data API → Project URL (the full `https://…supabase.co`) |
+   | `SUPABASE_SERVICE_ROLE_KEY` | Project Settings → API Keys → `service_role` |
+   | `ANTHROPIC_API_KEY` | [console.anthropic.com](https://console.anthropic.com/settings/keys) |
+   | `OWNER_PASSWORD` | Any strong string — this is the studio login |
+
+3. **Run** — `npm install && npm run dev`, then open http://localhost:3000.
+
+---
+
+## Notes
+
+- **Scheduling periods are calendar months**, identified everywhere by the ISO
+  date of the first day (`2026-09-01`). Invite links carry `?period=` so an
+  instructor's form always matches the month the owner is planning.
+- **All dates are handled in local time.** Going via `toISOString()` would shift
+  the day for anyone west of UTC and silently move a schedule into the wrong
+  month — see [`lib/period.ts`](lib/period.ts).
+- **The password gate is deliberately simple** — one shared password for one
+  studio owner, not a multi-tenant product. Swap [`lib/auth.ts`](lib/auth.ts)
+  for real auth if this grows.

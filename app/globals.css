@@ -1,26 +1,99 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* ---------------------------------------------------------------------------
+   Serene Pilates brand system.
+   Palette, type scale and weights are lifted from serenepilates.ca so the
+   scheduler reads as part of the same studio, not a bolted-on admin tool.
+   The brand is warm and light-only — there is deliberately no dark theme.
+--------------------------------------------------------------------------- */
+
+@theme {
+  /* Core palette */
+  --color-cream: #fefae0; /* cornsilk — hero/dark-surface text, soft fills */
+  --color-ink: #283517; /* dark olive — headings and body text */
+  --color-fern: #606c37; /* muted green — secondary text, nav links */
+  --color-sage: #8a9a5b; /* mid green — accents, icons */
+  --color-mist: #b8c79d; /* pale green — borders and dividers */
+  --color-clay: #bc6c24; /* tiger's eye — primary action */
+  --color-sand: #dda05f; /* earth yellow — the logo colour, highlights */
+  --color-peach: #f0c799; /* soft peach — tints, footer headings */
+  --color-paper: #faf8f3; /* off-white — page background */
+  --color-shell: #fffdf5; /* warm white — raised surfaces */
+
+  /* Derived shades used for hover/active states */
+  --color-clay-deep: #9c5719;
+  --color-fern-deep: #4a5429;
+
+  --font-sans: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, sans-serif;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+/* Type scale copied from the marketing site: large, light, tightly tracked. */
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  body {
+    background-color: var(--color-paper);
+    color: var(--color-ink);
+    letter-spacing: -0.011em;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  h1 {
+    font-size: 2.5rem;
+    font-weight: 300;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+  }
+
+  h2 {
+    font-size: 1.875rem;
+    font-weight: 300;
+    line-height: 1.25;
+    letter-spacing: -0.015em;
+  }
+
+  h3 {
+    font-size: 1.25rem;
+    font-weight: 400;
+    line-height: 1.35;
+    letter-spacing: -0.01em;
+  }
+
+  @media (min-width: 768px) {
+    h1 {
+      font-size: 3.5rem;
+    }
+    h2 {
+      font-size: 2.25rem;
+    }
+    h3 {
+      font-size: 1.5rem;
+    }
+  }
+
+  /* Form controls inherit the brand rather than the browser default. */
+  input,
+  select,
+  textarea,
+  button {
+    font: inherit;
+    letter-spacing: inherit;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-clay);
+    outline-offset: 2px;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* The small uppercase labels used above each dashboard section. */
+@utility eyebrow {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
