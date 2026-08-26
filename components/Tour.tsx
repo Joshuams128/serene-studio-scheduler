@@ -154,7 +154,7 @@ export function TourButton({ onClick }: { onClick: () => void }) {
       onClick={onClick}
       aria-label="Show me around the dashboard"
       title="Show me around"
-      className="flex h-8 w-8 items-center justify-center rounded-full border border-mist text-sm font-medium text-fern transition-colors hover:border-clay hover:bg-clay hover:text-shell"
+      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-mist text-sm font-medium text-fern transition-colors hover:border-clay hover:bg-clay hover:text-shell"
     >
       ?
     </button>

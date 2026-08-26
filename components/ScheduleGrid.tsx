@@ -196,8 +196,52 @@ export default function ScheduleGrid({
         {weeks.map((week) => (
           <div key={week.index}>
             <p className="eyebrow mb-2 text-sage">{week.label}</p>
-            <div className="overflow-hidden rounded-xl border border-mist/50 bg-white">
-              <table className="w-full text-left text-sm">
+            <div className="space-y-2 sm:hidden">
+              {week.classes.map((a) => (
+                <div
+                  key={assignmentKey(a)}
+                  className={`rounded-xl border p-3 ${
+                    a.instructorId
+                      ? "border-mist/50 bg-white"
+                      : "border-sand/60 bg-peach/15"
+                  }`}
+                >
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="text-sm font-medium text-ink">
+                      {a.format}
+                    </span>
+                    <span className="shrink-0 text-xs text-fern">
+                      {formatDate(a.date)}
+                    </span>
+                  </div>
+                  <p className="mt-0.5 text-xs tabular-nums text-fern">
+                    {formatTime(a.start)} – {formatTime(a.end)}
+                    {a.room && <span className="text-sage"> · {a.room}</span>}
+                  </p>
+                  {a.note && (
+                    <p className="mt-1 text-xs font-light italic leading-relaxed text-sage">
+                      {a.note}
+                    </p>
+                  )}
+                  <Select
+                    value={a.instructorId ?? ""}
+                    onChange={(e) => assign(a, e.target.value)}
+                    className="mt-2.5 w-full"
+                    aria-label={`Instructor for ${a.format} on ${formatDate(a.date)}`}
+                  >
+                    <option value="">— Needs cover —</option>
+                    {instructors.map((i) => (
+                      <option key={i.id} value={i.id}>
+                        {i.name}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              ))}
+            </div>
+
+            <div className="hidden overflow-x-auto rounded-xl border border-mist/50 bg-white sm:block">
+              <table className="w-full min-w-[34rem] text-left text-sm">
                 <tbody className="divide-y divide-mist/30">
                   {week.classes.map((a) => (
                     <tr
@@ -326,10 +370,11 @@ export default function ScheduleGrid({
           </div>
 
           {!confirmingSend && (
-            <div className="flex shrink-0 flex-wrap gap-2">
+            <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:shrink-0">
               <Button
                 variant="secondary"
                 size="sm"
+                className="flex-1 sm:flex-none"
                 onClick={() =>
                   window.open(
                     `/api/schedule/send?periodStart=${encodeURIComponent(periodStart)}`,
@@ -343,6 +388,7 @@ export default function ScheduleGrid({
               <Button
                 variant="primary"
                 size="sm"
+                className="flex-1 sm:flex-none"
                 onClick={() => {
                   setSendResult(null);
                   setSendError("");

@@ -120,15 +120,19 @@ function DayScheduleEditor({
                 aria-checked={on}
                 aria-label={`Available on ${DAY_LABELS[day]}${date ? ` ${date}` : ""}`}
                 onClick={() => setRanges(day, on ? [] : studioRanges(day))}
-                className={`relative h-6 w-11 shrink-0 rounded-full transition-colors duration-200 ${
-                  on ? "bg-sage" : "bg-mist/60"
-                }`}
+                className="-m-2 flex h-10 shrink-0 items-center justify-center p-2"
               >
                 <span
-                  className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200 ${
-                    on ? "translate-x-[1.375rem]" : "translate-x-0.5"
+                  className={`relative block h-6 w-11 rounded-full transition-colors duration-200 ${
+                    on ? "bg-sage" : "bg-mist/60"
                   }`}
-                />
+                >
+                  <span
+                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200 ${
+                      on ? "translate-x-[1.375rem]" : "translate-x-0.5"
+                    }`}
+                  />
+                </span>
               </button>
             </div>
 
@@ -172,7 +176,7 @@ function DayScheduleEditor({
                           setRanges(day, ranges.filter((_, idx) => idx !== i))
                         }
                         aria-label="Remove this time range"
-                        className="rounded-md px-2 py-1 text-sage transition-colors hover:text-[#a4442c]"
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-sage transition-colors hover:text-[#a4442c]"
                       >
                         ✕
                       </button>
@@ -184,7 +188,7 @@ function DayScheduleEditor({
                   onClick={() =>
                     setRanges(day, [...ranges, { ...STUDIO_HOURS[day][0] }])
                   }
-                  className="text-sm font-medium text-clay transition-opacity hover:opacity-70"
+                  className="py-2 text-sm font-medium text-clay transition-opacity hover:opacity-70"
                 >
                   + Add another window
                 </button>
@@ -391,7 +395,7 @@ export default function IntakeForm({
                     type="button"
                     onClick={() => toggleFormat(format)}
                     aria-pressed={on}
-                    className={`rounded-full border px-4 py-2 text-sm transition-all duration-200 ${
+                    className={`min-h-[2.5rem] rounded-full border px-4 py-2 text-sm transition-all duration-200 ${
                       on
                         ? "border-clay bg-clay text-shell shadow-sm"
                         : "border-mist bg-white text-fern hover:border-sage hover:text-ink"
@@ -465,7 +469,7 @@ export default function IntakeForm({
                 <button
                   type="button"
                   onClick={() => setWeekly(fullStudioWeek(DAYS.slice()))}
-                  className="text-sm font-medium text-clay transition-opacity hover:opacity-70"
+                  className="py-2 text-sm font-medium text-clay transition-opacity hover:opacity-70"
                 >
                   I&apos;m free whenever the studio is open
                 </button>
@@ -528,14 +532,14 @@ export default function IntakeForm({
                         )
                       )
                     }
-                    className="text-sm font-medium text-clay transition-opacity hover:opacity-70"
+                    className="py-1.5 text-sm font-medium text-clay transition-opacity hover:opacity-70"
                   >
                     Free all open hours
                   </button>
                   <button
                     type="button"
                     onClick={() => copyWeekToAll(activeWeek)}
-                    className="text-sm font-medium text-clay transition-opacity hover:opacity-70"
+                    className="py-1.5 text-sm font-medium text-clay transition-opacity hover:opacity-70"
                   >
                     Copy to all {weeks.length} weeks
                   </button>

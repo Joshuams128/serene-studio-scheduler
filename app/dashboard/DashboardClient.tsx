@@ -151,7 +151,7 @@ export default function DashboardClient({
                   onClick={() => goToMonth(-1)}
                   disabled={navigating}
                   aria-label={`Go to ${monthLabelShort(addMonths(periodStart, -1))}`}
-                  className="rounded-lg px-2 py-1 text-2xl leading-none text-mist transition-colors hover:text-fern disabled:opacity-40"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-2xl leading-none text-mist transition-colors hover:text-fern disabled:opacity-40"
                 >
                   ‹
                 </button>
@@ -162,7 +162,7 @@ export default function DashboardClient({
                   onClick={() => goToMonth(1)}
                   disabled={navigating}
                   aria-label={`Go to ${monthLabelShort(addMonths(periodStart, 1))}`}
-                  className="rounded-lg px-2 py-1 text-2xl leading-none text-mist transition-colors hover:text-fern disabled:opacity-40"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-2xl leading-none text-mist transition-colors hover:text-fern disabled:opacity-40"
                 >
                   ›
                 </button>
