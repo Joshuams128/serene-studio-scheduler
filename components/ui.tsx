@@ -65,9 +65,10 @@ const BUTTON_VARIANTS: Record<NonNullable<ButtonProps["variant"]>, string> = {
 };
 
 const BUTTON_SIZES: Record<NonNullable<ButtonProps["size"]>, string> = {
-  sm: "px-3 py-1.5 text-sm rounded-lg",
-  md: "px-4 py-2.5 text-sm rounded-xl",
-  lg: "px-6 py-3 text-base rounded-xl",
+  // Minimum heights keep these comfortably tappable on a phone.
+  sm: "px-3 py-2 text-sm rounded-lg min-h-[2.25rem]",
+  md: "px-4 py-2.5 text-sm rounded-xl min-h-[2.75rem]",
+  lg: "px-6 py-3 text-base rounded-xl min-h-[3rem]",
 };
 
 export function Button({

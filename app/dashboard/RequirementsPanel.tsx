@@ -106,7 +106,7 @@ export default function RequirementsPanel({
                   className="group flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 transition-colors hover:bg-paper"
                 >
                   <div className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-0.5">
-                    <span className="w-40 shrink-0 text-sm tabular-nums text-fern">
+                    <span className="w-full shrink-0 text-sm tabular-nums text-fern sm:w-40">
                       {formatTime(r.start_time)} – {formatTime(r.end_time)}
                     </span>
                     <span className="text-sm font-medium text-ink">{r.format}</span>
@@ -122,7 +122,7 @@ export default function RequirementsPanel({
                   <button
                     onClick={() => removeRequirement(r.id)}
                     aria-label={`Remove ${r.format} on ${DAY_LABELS[d]}`}
-                    className="shrink-0 rounded-md px-1.5 text-sage opacity-0 transition-opacity hover:text-[#a4442c] focus-visible:opacity-100 group-hover:opacity-100"
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-sage transition-opacity hover:text-[#a4442c] focus-visible:opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
                   >
                     ✕
                   </button>
