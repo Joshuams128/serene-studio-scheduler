@@ -1,36 +1,86 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Studio Scheduler (trial build)
 
-## Getting Started
+A small internal tool: instructors submit their availability through a
+personal link, and the studio owner generates a draft weekly class schedule
+with one click (Claude does the balancing), then edits and approves it.
 
-First, run the development server:
+## Stack
+
+- Next.js 16 (App Router, TypeScript, Tailwind)
+- Supabase (Postgres) — data storage, accessed server-side only
+- Claude API (Sonnet) — drafts the schedule from availability + requirements
+- Deploys to Vercel
+
+## 1. Database (Supabase)
+
+1. Create a project at [supabase.com](https://supabase.com) (or reuse an
+   existing one — this app's tables live under `public` and won't collide
+   with anything else, as long as those table names aren't already in use).
+2. In the Supabase SQL Editor, run everything in `supabase/schema.sql`.
+3. From Project Settings → API, grab:
+   - **Project URL** → `SUPABASE_URL`
+   - **service_role key** (not the anon key — this app uses the service role
+     key server-side only, since every table has Row Level Security on with
+     no policies) → `SUPABASE_SERVICE_ROLE_KEY`
+
+## 2. Claude API key
+
+Create a key at [platform.claude.com](https://platform.claude.com) →
+`ANTHROPIC_API_KEY`. Costs for this tool are tiny — a generated schedule run
+is a few cents at most; see the note you sent along with this.
+
+## 3. Local setup
 
 ```bash
+npm install
+cp .env.example .env.local   # fill in the three values above, plus OWNER_PASSWORD
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Visit `http://localhost:3000`, log in with `OWNER_PASSWORD`, add an
+instructor, and copy their invite link to test the intake form.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 4. Push to GitHub
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+git remote add origin <your-empty-repo-url>
+git push -u origin main
+```
 
-## Learn More
+## 5. Deploy on Vercel
 
-To learn more about Next.js, take a look at the following resources:
+1. Import the GitHub repo in the Vercel dashboard.
+2. Add the four environment variables from `.env.local` in Project Settings
+   → Environment Variables (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
+   `ANTHROPIC_API_KEY`, `OWNER_PASSWORD`).
+3. Deploy. Every push to `main` redeploys automatically, same as your other
+   repos.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## How it works
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- **Owner dashboard** (`/dashboard`, password-gated): add instructors and
+  get their invite link, set up the studio's required weekly class slots,
+  generate a draft schedule, edit it in the grid, and approve it.
+- **Instructor intake** (`/instructor/[token]`): no login — the link itself
+  is the access. Instructor submits their weekly availability and any notes.
+- **Generation**: pulls all availability + the required slots, sends it to
+  Claude with a forced structured-output tool call so the response always
+  comes back as clean, parseable JSON (day/time/format/instructor) rather
+  than free text you'd have to parse yourself. Claude is told the hard rules
+  (never double-book, never assign a format someone doesn't teach) and does
+  best-effort on soft preferences, and leaves a slot unassigned rather than
+  break a rule — flagging it in the summary.
+- **Editing**: the generated grid is fully editable before approving —
+  nothing is final until the owner says so.
 
-## Deploy on Vercel
+## What's intentionally left out of this trial version
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- No Hapana integration — pulling class-demand/attendance data from Hapana
+  automatically wasn't clearly documented as a public API, so this version
+  treats availability + fairness as the only inputs. Worth revisiting once
+  it's confirmed what data Hapana actually exposes.
+- No per-instructor login — a single owner password plus unique instructor
+  links is enough for a free trial with one studio. Would want real auth
+  (NextAuth, etc.) if this becomes a permanent tool.
+- No automatic reminders to instructors who haven't submitted yet — could
+  add a Resend email nudge if that turns out to be needed.
