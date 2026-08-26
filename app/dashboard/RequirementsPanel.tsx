@@ -3,15 +3,27 @@
 import { useState } from "react";
 import type { ClassRequirement } from "@/lib/types";
 import { DAYS, DAY_LABELS, formatTime, type Day } from "@/lib/period";
+import { firstWindow, studioHoursLabel, withinStudioHours } from "@/lib/studio";
 import {
+  Badge,
   Button,
   Card,
   Empty,
   Field,
   Input,
+  Note,
   SectionHeader,
   Select,
 } from "@/components/ui";
+
+/** "06:30" + 60 -> "07:30" */
+function addMinutes(time: string, minutes: number): string {
+  const [h, m] = time.split(":").map(Number);
+  const total = (h * 60 + m + minutes) % (24 * 60);
+  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(
+    total % 60
+  ).padStart(2, "0")}`;
+}
 
 /**
  * The studio's repeating weekly timetable — "Reformer, Mondays 9am". The
@@ -26,8 +38,8 @@ export default function RequirementsPanel({
 }) {
   const [adding, setAdding] = useState(false);
   const [day, setDay] = useState<Day>("Mon");
-  const [start, setStart] = useState("09:00");
-  const [end, setEnd] = useState("10:00");
+  const [start, setStart] = useState(firstWindow("Mon").start);
+  const [end, setEnd] = useState(addMinutes(firstWindow("Mon").start, 60));
   const [format, setFormat] = useState("");
   const [room, setRoom] = useState("");
   const [saving, setSaving] = useState(false);
@@ -101,6 +113,11 @@ export default function RequirementsPanel({
                     {r.room && (
                       <span className="text-xs text-sage">{r.room}</span>
                     )}
+                    {!withinStudioHours(
+                      d,
+                      r.start_time.slice(0, 5),
+                      r.end_time.slice(0, 5)
+                    ) && <Badge tone="sand">Outside open hours</Badge>}
                   </div>
                   <button
                     onClick={() => removeRequirement(r.id)}
@@ -127,7 +144,15 @@ export default function RequirementsPanel({
               <Field label="Day">
                 <Select
                   value={day}
-                  onChange={(e) => setDay(e.target.value as Day)}
+                  onChange={(e) => {
+                    const next = e.target.value as Day;
+                    setDay(next);
+                    // Reseed from that day's opening time — Friday and the
+                    // weekend open later than Mon-Thu.
+                    const open = firstWindow(next).start;
+                    setStart(open);
+                    setEnd(addMinutes(open, 60));
+                  }}
                 >
                   {DAYS.map((d) => (
                     <option key={d} value={d}>
@@ -166,6 +191,18 @@ export default function RequirementsPanel({
                 />
               </Field>
             </div>
+            <p className="mt-3 text-xs font-light text-sage">
+              Studio open {DAY_LABELS[day]}: {studioHoursLabel(day)}
+            </p>
+            {!withinStudioHours(day, start, end) && (
+              <div className="mt-3">
+                <Note tone="sand">
+                  That time falls outside the studio&apos;s opening hours on{" "}
+                  {DAY_LABELS[day]}. You can still add it — just checking it&apos;s
+                  deliberate.
+                </Note>
+              </div>
+            )}
             {error && <p className="mt-3 text-sm text-[#a4442c]">{error}</p>}
             <div className="mt-4 flex gap-2">
               <Button

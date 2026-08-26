@@ -3,8 +3,27 @@
 import { useMemo, useState } from "react";
 import type { Instructor, Schedule, ScheduleAssignment } from "@/lib/types";
 import { assignmentKey } from "@/lib/types";
-import { formatDate, formatTime, weeksInMonth } from "@/lib/period";
+import { formatDate, formatTime, monthLabel, weeksInMonth } from "@/lib/period";
 import { Badge, Button, Note, Select } from "@/components/ui";
+
+/** "2 hours ago" — enough precision for a "last sent" line. */
+function timeAgo(iso: string): string {
+  const seconds = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
+  if (seconds < 90) return "just now";
+  const units: [number, string][] = [
+    [60, "minute"],
+    [60, "hour"],
+    [24, "day"],
+  ];
+  let value = seconds;
+  let label = "second";
+  for (const [size, next] of units) {
+    if (value < size) break;
+    value = Math.round(value / size);
+    label = next;
+  }
+  return `${value} ${label}${value === 1 ? "" : "s"} ago`;
+}
 
 export default function ScheduleGrid({
   periodStart,
@@ -26,6 +45,15 @@ export default function ScheduleGrid({
   const [saving, setSaving] = useState<"save" | "approve" | "delete" | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [error, setError] = useState("");
+
+  const [confirmingSend, setConfirmingSend] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState("");
+  const [sendResult, setSendResult] = useState<{
+    sent: string[];
+    failed: { name: string; email: string; error: string }[];
+    warning?: string;
+  } | null>(null);
 
   // The month laid out as weeks, each holding only the classes that fall in it.
   const weeks = useMemo(() => {
@@ -97,7 +125,34 @@ export default function ScheduleGrid({
     onDeleted();
   }
 
+  async function send() {
+    setSending(true);
+    setSendError("");
+    setSendResult(null);
+    const res = await fetch("/api/schedule/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ periodStart }),
+    });
+    const data = await res.json();
+    setSending(false);
+    if (!res.ok) {
+      setSendError(data.error ?? "Couldn't send the emails.");
+      return;
+    }
+    setSendResult({
+      sent: data.sent,
+      failed: data.failed,
+      warning: data.warning,
+    });
+    setConfirmingSend(false);
+    if (data.schedule) onSaved(data.schedule);
+  }
+
   const unfilled = assignments.filter((a) => !a.instructorId).length;
+
+  const withEmail = instructors.filter((i) => i.email?.trim());
+  const withoutEmail = instructors.filter((i) => !i.email?.trim());
 
   // How many classes each instructor ended up with — the fairness check the
   // owner would otherwise do by hand.
@@ -240,6 +295,143 @@ export default function ScheduleGrid({
           >
             Delete draft
           </Button>
+        )}
+      </div>
+
+      {/* --- Send it out ------------------------------------------------- */}
+      <div className="rounded-2xl border border-mist/50 bg-paper/70 p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="eyebrow mb-1.5 text-sage">Send it out</p>
+            <h3 className="text-base font-medium text-ink">
+              Email this schedule to your team
+            </h3>
+            <p className="mt-1 max-w-lg text-sm font-light leading-relaxed text-fern">
+              Everyone gets their own classes at the top and the full month
+              underneath.{" "}
+              {withoutEmail.length > 0 && (
+                <span className="text-[#a4442c]">
+                  {withoutEmail.map((i) => i.name).join(", ")}{" "}
+                  {withoutEmail.length === 1 ? "has" : "have"} no email address
+                  yet — add one on their card above and they&apos;ll be included.
+                </span>
+              )}
+            </p>
+            {schedule.sent_at && (
+              <p className="mt-2 text-xs font-light text-sage">
+                Last sent {timeAgo(schedule.sent_at)} to {schedule.sent_to_count}{" "}
+                instructor{schedule.sent_to_count === 1 ? "" : "s"}.
+              </p>
+            )}
+          </div>
+
+          {!confirmingSend && (
+            <div className="flex shrink-0 flex-wrap gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() =>
+                  window.open(
+                    `/api/schedule/send?periodStart=${encodeURIComponent(periodStart)}`,
+                    "_blank",
+                    "noopener"
+                  )
+                }
+              >
+                Preview the email
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => {
+                  setSendResult(null);
+                  setSendError("");
+                  setConfirmingSend(true);
+                }}
+                disabled={withEmail.length === 0}
+                title={
+                  withEmail.length === 0
+                    ? "No instructor has an email address on file yet"
+                    : undefined
+                }
+              >
+                {schedule.sent_at ? "Send again" : "Send to"} {withEmail.length}{" "}
+                instructor{withEmail.length === 1 ? "" : "s"}
+              </Button>
+            </div>
+          )}
+        </div>
+
+        {confirmingSend && (
+          <div className="mt-4 rounded-xl border border-clay/25 bg-shell p-4">
+            <p className="text-sm font-medium text-ink">
+              Send the {monthLabel(periodStart)} schedule to{" "}
+              {withEmail.length} instructor{withEmail.length === 1 ? "" : "s"}?
+            </p>
+            <ul className="mt-2 space-y-0.5">
+              {withEmail.map((i) => (
+                <li key={i.id} className="text-sm font-light text-fern">
+                  {i.name}{" "}
+                  <span className="text-sage">&lt;{i.email?.trim()}&gt;</span>
+                </li>
+              ))}
+            </ul>
+            {unfilled > 0 && (
+              <p className="mt-3 text-sm font-light text-[#a4442c]">
+                {unfilled} class{unfilled === 1 ? "" : "es"} still {unfilled === 1 ? "has" : "have"} no
+                instructor — {unfilled === 1 ? "it" : "they"} will show as
+                “Needs cover” in the email.
+              </p>
+            )}
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={send}
+                disabled={sending}
+              >
+                {sending ? "Sending…" : "Yes, send now"}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setConfirmingSend(false)}
+                disabled={sending}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {sendError && (
+          <div className="mt-4">
+            <Note tone="alert">{sendError}</Note>
+          </div>
+        )}
+
+        {sendResult && (
+          <div className="mt-4 space-y-2">
+            {sendResult.sent.length > 0 && (
+              <Note tone="sage">
+                Sent to {sendResult.sent.length} instructor
+                {sendResult.sent.length === 1 ? "" : "s"}:{" "}
+                {sendResult.sent.join(", ")}.
+              </Note>
+            )}
+            {sendResult.warning && (
+              <Note tone="sand">{sendResult.warning}</Note>
+            )}
+            {sendResult.failed.length > 0 && (
+              <Note tone="alert">
+                Couldn&apos;t reach{" "}
+                {sendResult.failed
+                  .map((f) => `${f.name} (${f.error})`)
+                  .join(", ")}
+                . Check their address and try again.
+              </Note>
+            )}
+          </div>
         )}
       </div>
     </div>

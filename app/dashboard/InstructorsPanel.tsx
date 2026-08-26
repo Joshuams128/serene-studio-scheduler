@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import type { AvailabilitySubmission, Instructor } from "@/lib/types";
-import { formatTime, monthLabel } from "@/lib/period";
+import { isPerWeek } from "@/lib/types";
+import { formatDateShort, formatTime, monthLabel, weeksInMonth } from "@/lib/period";
 import {
   Badge,
   Button,
@@ -123,6 +124,9 @@ export default function InstructorsPanel({
                     {instructor.formats_taught.length > 0
                       ? instructor.formats_taught.join(" · ")
                       : "No formats set yet"}
+                    {!instructor.email?.trim() && (
+                      <span className="text-sand"> · no email on file</span>
+                    )}
                   </p>
                 </div>
 
@@ -160,19 +164,60 @@ export default function InstructorsPanel({
                   <p className="eyebrow mb-2 text-sage">
                     Available in {monthLabel(periodStart)}
                   </p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {submission.available_slots.length > 0 ? (
-                      submission.available_slots.map((slot, i) => (
-                        <Badge key={i} tone="mist">
-                          {slot.day} {formatTime(slot.start)}–{formatTime(slot.end)}
-                        </Badge>
-                      ))
-                    ) : (
-                      <span className="text-sm text-sage">
-                        No availability given.
-                      </span>
-                    )}
-                  </div>
+                  {submission.available_slots.length === 0 ? (
+                    <span className="text-sm text-sage">
+                      No availability given.
+                    </span>
+                  ) : isPerWeek(submission.available_slots) ? (
+                    // Their availability changes week to week — show it that way
+                    // rather than flattening it into one misleading list.
+                    <div className="space-y-2">
+                      {weeksInMonth(periodStart).map((week, i) => {
+                        const slots = submission.available_slots.filter(
+                          (s) => s.week === i + 1
+                        );
+                        return (
+                          <div key={week.index}>
+                            <p className="mb-1 text-xs font-medium text-fern">
+                              Week {i + 1}
+                              <span className="ml-1.5 font-light text-sage">
+                                {formatDateShort(week.dates[0])}–
+                                {formatDateShort(week.dates[week.dates.length - 1])}
+                              </span>
+                            </p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {slots.length > 0 ? (
+                                slots.map((slot, j) => (
+                                  <Badge key={j} tone="mist">
+                                    {slot.day} {formatTime(slot.start)}–
+                                    {formatTime(slot.end)}
+                                  </Badge>
+                                ))
+                              ) : (
+                                <span className="text-xs text-sand">
+                                  Not available
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <>
+                      <p className="mb-1.5 text-xs font-light text-sage">
+                        Same every week
+                      </p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {submission.available_slots.map((slot, i) => (
+                          <Badge key={i} tone="mist">
+                            {slot.day} {formatTime(slot.start)}–
+                            {formatTime(slot.end)}
+                          </Badge>
+                        ))}
+                      </div>
+                    </>
+                  )}
                   {submission.preferences && (
                     <p className="mt-3 border-t border-mist/40 pt-3 text-sm font-light italic leading-relaxed text-fern">
                       “{submission.preferences}”
@@ -199,7 +244,10 @@ export default function InstructorsPanel({
                   autoFocus
                 />
               </Field>
-              <Field label="Email" hint="Optional — for your own records.">
+              <Field
+                label="Email"
+                hint="Used to send them the finished schedule."
+              >
                 <Input
                   type="email"
                   value={email}

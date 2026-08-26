@@ -60,3 +60,9 @@ alter table instructors enable row level security;
 alter table availability_submissions enable row level security;
 alter table class_requirements enable row level security;
 alter table schedules enable row level security;
+
+-- Emailing the finished schedule out to instructors. Tracked on the schedule
+-- itself so the dashboard can show "last sent" and the owner doesn't blast
+-- everyone twice by accident. Safe to re-run over an existing database.
+alter table schedules add column if not exists sent_at timestamptz;
+alter table schedules add column if not exists sent_to_count integer not null default 0;
