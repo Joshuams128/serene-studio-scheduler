@@ -66,3 +66,13 @@ alter table schedules enable row level security;
 -- everyone twice by accident. Safe to re-run over an existing database.
 alter table schedules add column if not exists sent_at timestamptz;
 alter table schedules add column if not exists sent_to_count integer not null default 0;
+
+-- Formats belong to a category: taught classes, or non-teaching shifts like
+-- concierge cover. It hangs off the weekly template entry rather than a
+-- separate formats table, so this stays a one-column change. Team members
+-- deliberately have no category of their own — one person keeps one profile
+-- and one availability submission whatever mix of work they cover.
+alter table class_requirements add column if not exists category text not null default 'class';
+alter table class_requirements drop constraint if exists class_requirements_category_check;
+alter table class_requirements add constraint class_requirements_category_check
+  check (category in ('class', 'shift'));

@@ -5,9 +5,20 @@ import type { ClassRequirement } from "@/lib/types";
 import { DAYS, DAY_LABELS, formatTime, type Day } from "@/lib/period";
 import { firstWindow, studioHoursLabel, withinStudioHours } from "@/lib/studio";
 import {
+  CATEGORIES,
+  CATEGORY_HINT,
+  CATEGORY_LABEL,
+  CATEGORY_PLURAL,
+  DEFAULT_CATEGORY,
+  toCategory,
+  type Category,
+  type CategoryFilter,
+} from "@/lib/categories";
+import {
   Badge,
   Button,
   Card,
+  CategoryTabs,
   Empty,
   Field,
   Input,
@@ -37,6 +48,8 @@ export default function RequirementsPanel({
   onChange: (next: ClassRequirement[]) => void;
 }) {
   const [adding, setAdding] = useState(false);
+  const [filter, setFilter] = useState<CategoryFilter>("all");
+  const [category, setCategory] = useState<Category>(DEFAULT_CATEGORY);
   const [day, setDay] = useState<Day>("Mon");
   const [start, setStart] = useState(firstWindow("Mon").start);
   const [end, setEnd] = useState(addMinutes(firstWindow("Mon").start, 60));
@@ -57,6 +70,7 @@ export default function RequirementsPanel({
         startTime: start,
         endTime: end,
         format: format.trim(),
+        category,
         room: room.trim(),
       }),
     });
@@ -73,9 +87,19 @@ export default function RequirementsPanel({
     if (res.ok) onChange(requirements.filter((r) => r.id !== id));
   }
 
+  const counts: Record<CategoryFilter, number> = {
+    all: requirements.length,
+    class: requirements.filter((r) => toCategory(r.category) === "class").length,
+    shift: requirements.filter((r) => toCategory(r.category) === "shift").length,
+  };
+
+  const visible = requirements.filter(
+    (r) => filter === "all" || toCategory(r.category) === filter
+  );
+
   const byDay = DAYS.map((d) => ({
     day: d,
-    classes: requirements
+    classes: visible
       .filter((r) => r.day_of_week === d)
       .sort((a, b) => a.start_time.localeCompare(b.start_time)),
   })).filter((group) => group.classes.length > 0);
@@ -84,16 +108,22 @@ export default function RequirementsPanel({
     <Card>
       <SectionHeader
         eyebrow="Step 2"
-        title="Weekly class template"
-        description="The classes you run every week. This is the timetable the draft fills in — set it once and it carries month to month."
+        title="Weekly template"
+        description="The classes and shifts you run every week. This is the timetable the draft fills in — set it once and it carries month to month."
         action={
           !adding && (
             <Button variant="secondary" size="sm" onClick={() => setAdding(true)}>
-              + Add class
+              + Add entry
             </Button>
           )
         }
       />
+
+      {counts.all > 0 && (
+        <div className="border-b border-mist/40 px-6 py-3">
+          <CategoryTabs value={filter} onChange={setFilter} counts={counts} />
+        </div>
+      )}
 
       <div className="divide-y divide-mist/30">
         {byDay.map(({ day: d, classes }) => (
@@ -112,6 +142,9 @@ export default function RequirementsPanel({
                     <span className="text-sm font-medium text-ink">{r.format}</span>
                     {r.room && (
                       <span className="text-xs text-sage">{r.room}</span>
+                    )}
+                    {filter === "all" && toCategory(r.category) !== "class" && (
+                      <Badge tone="clay">{CATEGORY_LABEL[toCategory(r.category)]}</Badge>
                     )}
                     {!withinStudioHours(
                       d,
@@ -132,15 +165,33 @@ export default function RequirementsPanel({
           </div>
         ))}
 
-        {requirements.length === 0 && !adding && (
+        {visible.length === 0 && !adding && (
           <Empty>
-            No classes on the timetable yet — add the ones you run each week.
+            {counts.all === 0
+              ? "Nothing on the timetable yet — add the classes and shifts you run each week."
+              : `No ${CATEGORY_PLURAL[filter as Category].toLowerCase()} on the timetable yet.`}
           </Empty>
         )}
 
         {adding && (
           <div className="bg-paper/60 px-6 py-5">
             <div className="grid gap-3 sm:grid-cols-2">
+              <Field
+                label="Kind"
+                hint={CATEGORY_HINT[category]}
+                className="sm:col-span-2"
+              >
+                <Select
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value as Category)}
+                >
+                  {CATEGORIES.map((c) => (
+                    <option key={c} value={c}>
+                      {CATEGORY_LABEL[c]}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
               <Field label="Day">
                 <Select
                   value={day}
@@ -161,11 +212,11 @@ export default function RequirementsPanel({
                   ))}
                 </Select>
               </Field>
-              <Field label="Class format">
+              <Field label={category === "shift" ? "Shift type" : "Class format"}>
                 <Input
                   value={format}
                   onChange={(e) => setFormat(e.target.value)}
-                  placeholder="Reformer"
+                  placeholder={category === "shift" ? "Concierge" : "Reformer"}
                   autoFocus
                 />
               </Field>

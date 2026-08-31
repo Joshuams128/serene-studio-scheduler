@@ -2,6 +2,12 @@ import { Resend } from "resend";
 import type { Instructor, ScheduleAssignment } from "./types";
 import { formatDate, formatTime, monthLabel, weeksInMonth } from "./period";
 import { studioHoursSummary } from "./studio";
+import {
+  CATEGORY_PLURAL,
+  categoryOf,
+  toCategory,
+  type Category,
+} from "./categories";
 
 /* ---------------------------------------------------------------------------
    Emailing a finished schedule out to the instructors it involves.
@@ -60,6 +66,50 @@ export function buildRecipients(
   }
 
   return { sendable, missingEmail };
+}
+
+/**
+ * The categories relevant to one person: what they're actually assigned this
+ * month, falling back to what their profile says they cover when they have
+ * nothing on. Someone who only does concierge shifts should never get the whole
+ * class timetable pushed at them.
+ */
+function relevantCategories(
+  classes: ScheduleAssignment[],
+  instructor: Instructor,
+  formatCategories: Map<string, Category>
+): Set<Category> {
+  if (classes.length > 0) {
+    return new Set(classes.map((c) => toCategory(c.category)));
+  }
+  const fromProfile = instructor.formats_taught.map((f) =>
+    categoryOf(formatCategories, f)
+  );
+  // No assignments and no formats on file — show classes rather than nothing.
+  return fromProfile.length > 0 ? new Set(fromProfile) : new Set<Category>(["class"]);
+}
+
+/** "9 classes", "4 shifts", "9 classes and 4 shifts" */
+function describeWorkload(classes: ScheduleAssignment[]): string {
+  const counts = { class: 0, shift: 0 };
+  for (const c of classes) counts[toCategory(c.category)]++;
+
+  const parts: string[] = [];
+  for (const key of ["class", "shift"] as Category[]) {
+    const n = counts[key];
+    if (n === 0) continue;
+    const noun = n === 1 ? (key === "class" ? "class" : "shift") : CATEGORY_PLURAL[key].toLowerCase();
+    parts.push(`${n} ${noun}`);
+  }
+  return parts.join(" and ");
+}
+
+/** "classes", "shifts", "classes and shifts" */
+function describeCategories(cats: Set<Category>): string {
+  const parts = (["class", "shift"] as Category[])
+    .filter((c) => cats.has(c))
+    .map((c) => CATEGORY_PLURAL[c].toLowerCase());
+  return parts.join(" and ");
 }
 
 function esc(value: string): string {
@@ -133,29 +183,38 @@ export function renderScheduleEmail({
   classes,
   periodStart,
   allAssignments,
+  formatCategories,
 }: {
   instructor: Instructor;
   classes: ScheduleAssignment[];
   periodStart: string;
   allAssignments: ScheduleAssignment[];
+  formatCategories: Map<string, Category>;
 }): { subject: string; html: string; text: string } {
   const month = monthLabel(periodStart);
   const firstName = instructor.name.split(" ")[0];
   const count = classes.length;
 
+  // Only show the parts of the month this person has anything to do with.
+  const mine = relevantCategories(classes, instructor, formatCategories);
+  const relevant = allAssignments.filter((a) => mine.has(toCategory(a.category)));
+  const categoryWord = describeCategories(mine);
+
   const subject =
     count > 0
-      ? `Your ${month} schedule — ${count} class${count === 1 ? "" : "es"}`
+      ? `Your ${month} schedule — ${describeWorkload(classes)}`
       : `${month} schedule at Serene Pilates`;
 
   const intro =
     count > 0
-      ? `Here are your classes for ${esc(month)} — ${count} in total.`
-      : `You're not down for any classes in ${esc(
+      ? `Here are your ${esc(categoryWord)} for ${esc(month)} — ${describeWorkload(
+          classes
+        )} in total.`
+      : `You're not down for any ${esc(categoryWord)} in ${esc(
           month
         )} at the moment. The full timetable is below in case anything changes.`;
 
-  const mine =
+  const mineTable =
     count > 0
       ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-top:18px;background:${PAPER};border-radius:12px;">
            ${classRows(classes, false)}
@@ -189,14 +248,20 @@ export function renderScheduleEmail({
       <div style="font-size:28px;font-weight:300;letter-spacing:-0.02em;color:${INK};line-height:1.2;">${esc(month)}</div>
       <p style="margin:20px 0 0;font-size:15px;color:${INK};">Hi ${esc(firstName)},</p>
       <p style="margin:8px 0 0;font-size:15px;font-weight:300;line-height:1.6;color:${FERN};">${intro}</p>
-      ${mine}
+      ${mineTable}
 
-      <div style="margin-top:32px;padding-top:24px;border-top:1px solid ${MIST}66;">
-        <div style="font-size:11px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:${SAGE};">Everyone's classes this month</div>
+      ${
+        relevant.length > 0
+          ? `<div style="margin-top:32px;padding-top:24px;border-top:1px solid ${MIST}66;">
+        <div style="font-size:11px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:${SAGE};">Everyone's ${esc(
+          categoryWord
+        )} this month</div>
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin-top:4px;">
-          ${fullTimetable(periodStart, allAssignments)}
+          ${fullTimetable(periodStart, relevant)}
         </table>
-      </div>
+      </div>`
+          : ""
+      }
 
       <p style="margin:28px 0 0;font-size:14px;font-weight:300;line-height:1.6;color:${FERN};">
         If something doesn't work for you, just reply to this email and we'll sort it out.
@@ -219,8 +284,8 @@ export function renderScheduleEmail({
     `Hi ${firstName},`,
     "",
     count > 0
-      ? `Here are your classes for ${month} — ${count} in total.`
-      : `You're not down for any classes in ${month} at the moment.`,
+      ? `Here are your ${categoryWord} for ${month} — ${describeWorkload(classes)} in total.`
+      : `You're not down for any ${categoryWord} in ${month} at the moment.`,
     "",
   ];
   for (const c of classes) {
@@ -257,10 +322,12 @@ export async function sendScheduleEmails({
   recipients,
   periodStart,
   allAssignments,
+  formatCategories,
 }: {
   recipients: Recipient[];
   periodStart: string;
   allAssignments: ScheduleAssignment[];
+  formatCategories: Map<string, Category>;
 }): Promise<SendResult> {
   const resend = new Resend(process.env.RESEND_API_KEY);
   const from = process.env.SCHEDULE_FROM_EMAIL as string;
@@ -273,6 +340,7 @@ export async function sendScheduleEmails({
         classes,
         periodStart,
         allAssignments,
+        formatCategories,
       });
 
       const { error } = await resend.emails.send({

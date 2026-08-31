@@ -13,7 +13,25 @@ same Inter typography, same logo.
 
 There are two screens, and only one of them needs a password.
 
-### The instructor's screen — `/instructor/<their-token>`
+### Classes and shifts
+
+The studio runs two kinds of thing, and both go through the same machinery:
+
+- **Classes** — taught on the timetable. Reformer, Mat, Serene Blend.
+- **Shifts** — non-teaching cover. Concierge, front desk.
+
+The category lives on the weekly template entry, so adding one is a single
+select when you add it. **People have no category.** One person has one
+profile, one private link and one availability submission no matter what mix
+they cover — someone who teaches Reformer *and* does Saturday front desk is one
+team member, not two. That's the whole reason it works this way.
+
+Every view that lists things — the team, the weekly template, the draft — has
+the same **Classes / Shifts** filter so you can work on one at a time. The
+filter is display only: the draft underneath always covers everything at once,
+so nobody is ever double-booked between a class and a shift.
+
+### The team member's screen — `/instructor/<their-token>`
 
 Each instructor gets a **private link** with a token in it. No account, no
 password: the link *is* their access, and it only ever shows their own details.
@@ -22,8 +40,10 @@ email, WhatsApp).
 
 On that page an instructor:
 
-1. **Taps what they teach.** The formats the studio actually runs are offered as
-   chips, so this stays accurate; they can add anything missing.
+1. **Taps what they cover.** Everything the studio runs is offered as chips,
+   grouped into Classes and Shifts, so this stays accurate; they can add
+   anything missing. One person picks from both groups — there's no separate
+   form for shift workers.
 2. **Sets when they're free.** A checkbox at the top — *"My days are the same
    every week"* — is ticked by default: fill in seven days once and it applies
    to the whole month. Untick it and the form splits into a tab per week
@@ -54,11 +74,13 @@ corner replays it any time. (Arrow keys step through it, Escape closes it.)
 
 Three numbered steps, top to bottom:
 
-1. **Your team** — add instructors, copy each one's private link, and watch
+1. **Your team** — add people, copy each one's private link, and watch
    "Waiting" flip to "Submitted" as they come in. Click **View** on anyone who
-   has submitted to see their exact windows and what they wrote.
-2. **Weekly class template** — the classes the studio runs every week
-   ("Reformer, Mondays 9am"). Set once; it carries month to month.
+   has submitted to see their exact windows and what they wrote. Filter by
+   Classes / Shifts to see who covers what — anyone who does both shows in both.
+2. **Weekly template** — what the studio runs every week ("Reformer, Mondays
+   9am"; "Concierge, Saturdays 9–2"). Each entry is a Class or a Shift. Set
+   once; it carries month to month.
 3. **Draft for `<month>`** — press **Draft the schedule**.
 
 The draft is a real month: the weekly template expanded across every week, each
@@ -79,8 +101,10 @@ Then either:
 
 At the bottom of the draft, **Send to instructors** emails the month to everyone
 with an address on file. Each person gets the same email with **their own
-classes at the top** and the full studio timetable underneath, so they can see
-who else is on.
+list at the top** and, underneath, only the parts of the month that apply to
+them — someone who only covers front desk is never sent the class timetable,
+and the subject line says "2 shifts" rather than "2 classes". Someone who does
+both sees both.
 
 Before anything leaves:
 
@@ -108,11 +132,15 @@ Four rules are treated as hard, and every assignment is re-checked against them
 in code afterwards — anything that breaks one is cleared and called out in the
 summary rather than quietly shipped:
 
-1. The class must sit inside one of that instructor's submitted windows **for
-   that specific week** — a window set for week 2 says nothing about week 3.
-2. They must teach that format.
-3. No overlapping classes on the same day.
+1. It must sit inside one of that person's submitted windows **for that
+   specific week** — a window set for week 2 says nothing about week 3.
+2. They must cover that format.
+3. **No overlaps on the same day, across categories** — a class and a shift that
+   run into each other are treated exactly like two overlapping classes.
 4. Nobody who hasn't submitted gets assigned.
+
+The category is a display and email tag only. It is deliberately invisible to
+the rules above, which run over each person's **whole** month.
 
 Beyond that it balances the load across the month, keeps each instructor's week
 consistent, and tries to give the same person the same recurring class each week
@@ -143,7 +171,8 @@ Change them in that one file and every default, hint and warning follows.
 1. **Database** — run [`supabase/schema.sql`](supabase/schema.sql) against your
    Supabase project (SQL Editor → paste → run). It's safe to re-run over an
    existing database, and you'll need to **re-run it to pick up the `sent_at`
-   columns** that the email feature records against. RLS is on with no policies;
+   columns** the email feature records against and the **`category` column**
+   the class/shift split needs. RLS is on with no policies;
    the app only ever reaches the database server-side with the service role key.
 
 2. **Environment** — copy `.env.example` to `.env.local` and fill in:
@@ -174,6 +203,12 @@ Change them in that one file and every default, hint and warning follows.
 - **Scheduling periods are calendar months**, identified everywhere by the ISO
   date of the first day (`2026-09-01`). Invite links carry `?period=` so an
   instructor's form always matches the month the owner is planning.
+- **`class_requirements.category`** is `'class'` or `'shift'`, defaulting to
+  `'class'` so everything that already existed keeps working. A format's category
+  is looked up from the template; one that isn't on the template yet falls back
+  to `'class'` rather than disappearing from a filtered view. See
+  [`lib/categories.ts`](lib/categories.ts) — adding a third category is a change
+  to that file plus the check constraint.
 - **Availability slots carry an optional `week`** (1-indexed). Absent means "every
   week"; a number means that week only. A submission is in per-week mode if any
   of its slots carry one — no extra column, so no migration.

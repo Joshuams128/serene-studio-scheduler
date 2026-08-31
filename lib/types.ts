@@ -1,3 +1,5 @@
+import type { Category } from "./categories";
+
 export type Instructor = {
   id: string;
   name: string;
@@ -40,6 +42,8 @@ export type ClassRequirement = {
   start_time: string;
   end_time: string;
   format: string;
+  /** "class" (taught) or "shift" (front-of-house cover). See lib/categories.ts. */
+  category: Category;
   room: string | null;
   active: boolean;
 };
@@ -52,6 +56,13 @@ export type ScheduleAssignment = {
   start: string;
   end: string;
   format: string;
+  /**
+   * Copied from the template entry when the month is planned, so the draft can
+   * be grouped and filtered later even if the template changes underneath it.
+   * Purely a display/filter tag — the assignment rules ignore it entirely, so a
+   * person is never double-booked across a class and a shift.
+   */
+  category: Category;
   room?: string | null;
   instructorId: string | null;
   instructorName: string | null;

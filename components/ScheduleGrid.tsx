@@ -4,7 +4,14 @@ import { useMemo, useState } from "react";
 import type { Instructor, Schedule, ScheduleAssignment } from "@/lib/types";
 import { assignmentKey } from "@/lib/types";
 import { formatDate, formatTime, monthLabel, weeksInMonth } from "@/lib/period";
-import { Badge, Button, Note, Select } from "@/components/ui";
+import { Badge, Button, CategoryTabs, Note, Select } from "@/components/ui";
+import {
+  CATEGORY_LABEL,
+  CATEGORY_PLURAL,
+  toCategory,
+  type Category,
+  type CategoryFilter,
+} from "@/lib/categories";
 
 /** "2 hours ago" — enough precision for a "last sent" line. */
 function timeAgo(iso: string): string {
@@ -42,6 +49,7 @@ export default function ScheduleGrid({
     schedule.assignments
   );
   const [dirty, setDirty] = useState(false);
+  const [filter, setFilter] = useState<CategoryFilter>("all");
   const [saving, setSaving] = useState<"save" | "approve" | "delete" | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [error, setError] = useState("");
@@ -56,9 +64,17 @@ export default function ScheduleGrid({
   } | null>(null);
 
   // The month laid out as weeks, each holding only the classes that fall in it.
+  const visible = useMemo(
+    () =>
+      filter === "all"
+        ? assignments
+        : assignments.filter((a) => toCategory(a.category) === filter),
+    [assignments, filter]
+  );
+
   const weeks = useMemo(() => {
     const byDate = new Map<string, ScheduleAssignment[]>();
-    for (const a of assignments) {
+    for (const a of visible) {
       const list = byDate.get(a.date) ?? [];
       list.push(a);
       byDate.set(a.date, list);
@@ -76,7 +92,7 @@ export default function ScheduleGrid({
           ),
       }))
       .filter((week) => week.classes.length > 0);
-  }, [assignments, periodStart]);
+  }, [visible, periodStart]);
 
   function assign(target: ScheduleAssignment, instructorId: string) {
     const instructor = instructors.find((i) => i.id === instructorId);
@@ -149,13 +165,21 @@ export default function ScheduleGrid({
     if (data.schedule) onSaved(data.schedule);
   }
 
-  const unfilled = assignments.filter((a) => !a.instructorId).length;
+  const unfilled = visible.filter((a) => !a.instructorId).length;
+
+  const counts: Record<CategoryFilter, number> = {
+    all: assignments.length,
+    class: assignments.filter((a) => toCategory(a.category) === "class").length,
+    shift: assignments.filter((a) => toCategory(a.category) === "shift").length,
+  };
+  const mixed = counts.class > 0 && counts.shift > 0;
 
   const withEmail = instructors.filter((i) => i.email?.trim());
   const withoutEmail = instructors.filter((i) => !i.email?.trim());
 
   // How many classes each instructor ended up with — the fairness check the
   // owner would otherwise do by hand.
+  // Deliberately counted across every category — one person, one workload.
   const load = instructors
     .map((i) => ({
       name: i.name,
@@ -175,11 +199,19 @@ export default function ScheduleGrid({
         </Note>
       )}
 
+      <CategoryTabs value={filter} onChange={setFilter} counts={counts} allLabel="Everything" />
+
       <div className="flex flex-wrap items-center gap-2">
         <Badge tone={schedule.status === "approved" ? "sage" : "mist"}>
           {schedule.status === "approved" ? "✓ Approved" : "Draft"}
         </Badge>
-        <Badge tone="mist">{assignments.length} classes</Badge>
+        <Badge tone="mist">
+          {filter === "all"
+            ? mixed
+              ? `${counts.class} classes · ${counts.shift} shifts`
+              : `${counts.all} ${counts.all === 1 ? "entry" : "entries"}`
+            : `${counts[filter]} ${CATEGORY_PLURAL[filter as Category].toLowerCase()}`}
+        </Badge>
         {unfilled > 0 && (
           <Badge tone="alert">
             {unfilled} still need{unfilled === 1 ? "s" : ""} an instructor
@@ -187,10 +219,17 @@ export default function ScheduleGrid({
         )}
         {load.length > 0 && (
           <span className="ml-1 text-xs font-light text-sage">
+            {mixed && "Total each: "}
             {load.map((l) => `${l.name} ${l.count}`).join(" · ")}
           </span>
         )}
       </div>
+
+      {weeks.length === 0 && (
+        <p className="rounded-xl border border-mist/50 bg-paper px-4 py-8 text-center text-sm font-light text-sage">
+          No {CATEGORY_PLURAL[filter as Category].toLowerCase()} in this month&apos;s draft.
+        </p>
+      )}
 
       <div className="space-y-6">
         {weeks.map((week) => (
@@ -209,6 +248,11 @@ export default function ScheduleGrid({
                   <div className="flex items-baseline justify-between gap-2">
                     <span className="text-sm font-medium text-ink">
                       {a.format}
+                      {filter === "all" && toCategory(a.category) === "shift" && (
+                        <span className="ml-1.5 text-xs font-normal text-clay">
+                          {CATEGORY_LABEL.shift}
+                        </span>
+                      )}
                     </span>
                     <span className="shrink-0 text-xs text-fern">
                       {formatDate(a.date)}
@@ -256,6 +300,11 @@ export default function ScheduleGrid({
                       </td>
                       <td className="py-2.5 pr-2 align-middle">
                         <span className="font-medium text-ink">{a.format}</span>
+                        {filter === "all" && toCategory(a.category) === "shift" && (
+                          <span className="ml-2 text-xs text-clay">
+                            {CATEGORY_LABEL.shift}
+                          </span>
+                        )}
                         {a.room && (
                           <span className="ml-2 text-xs text-sage">{a.room}</span>
                         )}
@@ -351,7 +400,8 @@ export default function ScheduleGrid({
               Email this schedule to your team
             </h3>
             <p className="mt-1 max-w-lg text-sm font-light leading-relaxed text-fern">
-              Everyone gets their own classes at the top and the full month
+              Everyone gets their own {mixed ? "classes and shifts" : "list"} at
+              the top, and only the parts of the month that apply to them
               underneath.{" "}
               {withoutEmail.length > 0 && (
                 <span className="text-[#a4442c]">
@@ -364,7 +414,7 @@ export default function ScheduleGrid({
             {schedule.sent_at && (
               <p className="mt-2 text-xs font-light text-sage">
                 Last sent {timeAgo(schedule.sent_at)} to {schedule.sent_to_count}{" "}
-                instructor{schedule.sent_to_count === 1 ? "" : "s"}.
+                {schedule.sent_to_count === 1 ? "person" : "people"}.
               </p>
             )}
           </div>
@@ -397,12 +447,12 @@ export default function ScheduleGrid({
                 disabled={withEmail.length === 0}
                 title={
                   withEmail.length === 0
-                    ? "No instructor has an email address on file yet"
+                    ? "Nobody on the team has an email address on file yet"
                     : undefined
                 }
               >
                 {schedule.sent_at ? "Send again" : "Send to"} {withEmail.length}{" "}
-                instructor{withEmail.length === 1 ? "" : "s"}
+                {withEmail.length === 1 ? "person" : "people"}
               </Button>
             </div>
           )}
@@ -412,7 +462,7 @@ export default function ScheduleGrid({
           <div className="mt-4 rounded-xl border border-clay/25 bg-shell p-4">
             <p className="text-sm font-medium text-ink">
               Send the {monthLabel(periodStart)} schedule to{" "}
-              {withEmail.length} instructor{withEmail.length === 1 ? "" : "s"}?
+              {withEmail.length} {withEmail.length === 1 ? "person" : "people"}?
             </p>
             <ul className="mt-2 space-y-0.5">
               {withEmail.map((i) => (
@@ -460,8 +510,8 @@ export default function ScheduleGrid({
           <div className="mt-4 space-y-2">
             {sendResult.sent.length > 0 && (
               <Note tone="sage">
-                Sent to {sendResult.sent.length} instructor
-                {sendResult.sent.length === 1 ? "" : "s"}:{" "}
+                Sent to {sendResult.sent.length}{" "}
+                {sendResult.sent.length === 1 ? "person" : "people"}:{" "}
                 {sendResult.sent.join(", ")}.
               </Note>
             )}

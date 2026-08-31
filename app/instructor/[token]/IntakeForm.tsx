@@ -13,6 +13,13 @@ import {
   type Day,
 } from "@/lib/period";
 import { STUDIO_HOURS, studioHoursLabel } from "@/lib/studio";
+import {
+  CATEGORIES,
+  CATEGORY_PLURAL,
+  categoryOf,
+  categoryMap,
+  type Category,
+} from "@/lib/categories";
 import SiteHeader from "@/components/SiteHeader";
 import {
   Badge,
@@ -215,7 +222,8 @@ export default function IntakeForm({
   periodStart: string;
   name: string;
   formatsTaught: string[];
-  studioFormats: string[];
+  /** What the studio runs, with the category each format belongs to. */
+  studioFormats: { format: string; category: string }[];
   existing: AvailabilitySubmission | null;
 }) {
   const weeks = useMemo(() => weeksInMonth(periodStart), [periodStart]);
@@ -246,7 +254,18 @@ export default function IntakeForm({
   );
   const [error, setError] = useState("");
 
-  const formatOptions = [...new Set([...studioFormats, ...formats])].sort();
+  // Everything the studio runs, plus anything already on this person's profile,
+  // grouped by category. One person, one list — the categories are only here to
+  // make a long mixed list easier to read.
+  const formatCategories = categoryMap(studioFormats);
+  const allOptions = [
+    ...new Set([...studioFormats.map((f) => f.format), ...formats]),
+  ].sort();
+  const grouped = CATEGORIES.map((c) => ({
+    category: c,
+    options: allOptions.filter((f) => categoryOf(formatCategories, f) === c),
+  })).filter((g) => g.options.length > 0);
+  const showGroupHeadings = grouped.length > 1;
 
   /** Switching to per-week seeds every week from the repeating pattern, so
    *  they only have to change the week that's actually different. */
@@ -364,9 +383,9 @@ export default function IntakeForm({
             Hi {name.split(" ")[0]}
           </h1>
           <p className="mx-auto mt-3 max-w-md text-base font-light leading-relaxed text-fern">
-            Tell us when you can teach next month and anything we should keep in
-            mind. It takes about a minute — you can come back and change it any
-            time before the schedule goes out.
+            Tell us when you&apos;re free next month and anything we should keep
+            in mind. It takes about a minute — you can come back and change it
+            any time before the schedule goes out.
           </p>
         </div>
       </div>
@@ -382,33 +401,44 @@ export default function IntakeForm({
         {/* --- What they teach --- */}
         <Card>
           <SectionHeader
-            title="What do you teach?"
-            description="Tap everything you're comfortable covering."
+            title="What do you cover?"
+            description="Tap every class and shift you're happy to take."
           />
           <div className="px-6 py-5">
-            <div className="flex flex-wrap gap-2">
-              {formatOptions.map((format) => {
-                const on = formats.includes(format);
-                return (
-                  <button
-                    key={format}
-                    type="button"
-                    onClick={() => toggleFormat(format)}
-                    aria-pressed={on}
-                    className={`min-h-[2.5rem] rounded-full border px-4 py-2 text-sm transition-all duration-200 ${
-                      on
-                        ? "border-clay bg-clay text-shell shadow-sm"
-                        : "border-mist bg-white text-fern hover:border-sage hover:text-ink"
-                    }`}
-                  >
-                    {format}
-                  </button>
-                );
-              })}
-              {formatOptions.length === 0 && (
+            <div className="space-y-4">
+              {grouped.map(({ category, options }) => (
+                <div key={category}>
+                  {showGroupHeadings && (
+                    <p className="eyebrow mb-2 text-sage">
+                      {CATEGORY_PLURAL[category as Category]}
+                    </p>
+                  )}
+                  <div className="flex flex-wrap gap-2">
+                    {options.map((format) => {
+                      const on = formats.includes(format);
+                      return (
+                        <button
+                          key={format}
+                          type="button"
+                          onClick={() => toggleFormat(format)}
+                          aria-pressed={on}
+                          className={`min-h-[2.5rem] rounded-full border px-4 py-2 text-sm transition-all duration-200 ${
+                            on
+                              ? "border-clay bg-clay text-shell shadow-sm"
+                              : "border-mist bg-white text-fern hover:border-sage hover:text-ink"
+                          }`}
+                        >
+                          {format}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+              {grouped.length === 0 && (
                 <p className="text-sm font-light text-sage">
-                  The studio hasn&apos;t listed its class formats yet — add
-                  yours below.
+                  The studio hasn&apos;t listed what it runs yet — add yours
+                  below.
                 </p>
               )}
             </div>
@@ -423,7 +453,7 @@ export default function IntakeForm({
                     addCustomFormat();
                   }
                 }}
-                placeholder="Something else you teach"
+                placeholder="Something else you cover"
               />
               <Button
                 variant="secondary"
@@ -440,7 +470,7 @@ export default function IntakeForm({
         <Card>
           <SectionHeader
             title="When are you free?"
-            description="Turn on the days you can teach and set the hours you're around."
+            description="Turn on the days you can work and set the hours you're around."
           />
 
           {/* The shortcut: most people keep the same days all month. */}
