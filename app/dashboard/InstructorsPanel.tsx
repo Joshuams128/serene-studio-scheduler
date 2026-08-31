@@ -293,7 +293,7 @@ export default function InstructorsPanel({
                 <Input
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="Priya Sharma"
+                  placeholder="John Doe"
                   autoFocus
                 />
               </Field>
@@ -305,7 +305,7 @@ export default function InstructorsPanel({
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="priya@example.com"
+                  placeholder="john@example.com"
                 />
               </Field>
               <Field
