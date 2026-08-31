@@ -4,10 +4,20 @@ import { useState } from "react";
 import type { AvailabilitySubmission, Instructor } from "@/lib/types";
 import { isPerWeek } from "@/lib/types";
 import { formatDateShort, formatTime, monthLabel, weeksInMonth } from "@/lib/period";
+import type { ClassRequirement } from "@/lib/types";
+import {
+  CATEGORY_LABEL,
+  CATEGORY_TEAM_LABEL,
+  categoriesForFormats,
+  categoryMap,
+  categoryOf,
+  type CategoryFilter,
+} from "@/lib/categories";
 import {
   Badge,
   Button,
   Card,
+  CategoryTabs,
   Empty,
   Field,
   Input,
@@ -18,13 +28,17 @@ export default function InstructorsPanel({
   periodStart,
   instructors,
   submissions,
+  requirements,
   onChange,
 }: {
   periodStart: string;
   instructors: Instructor[];
   submissions: AvailabilitySubmission[];
+  /** Only used to work out which category each format belongs to. */
+  requirements: ClassRequirement[];
   onChange: (next: Instructor[]) => void;
 }) {
+  const [filter, setFilter] = useState<CategoryFilter>("all");
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -86,23 +100,52 @@ export default function InstructorsPanel({
     setTimeout(() => setCopiedId((c) => (c === instructor.id ? null : c)), 2000);
   }
 
+  // One roster, tagged by what each person covers — never two lists.
+  const formatCategories = categoryMap(requirements);
+  const coversFilter = (i: Instructor) =>
+    filter === "all" ||
+    categoriesForFormats(formatCategories, i.formats_taught).has(filter);
+
+  const counts: Record<CategoryFilter, number> = {
+    all: instructors.length,
+    class: instructors.filter((i) =>
+      categoriesForFormats(formatCategories, i.formats_taught).has("class")
+    ).length,
+    shift: instructors.filter((i) =>
+      categoriesForFormats(formatCategories, i.formats_taught).has("shift")
+    ).length,
+  };
+
+  const visible = instructors.filter(coversFilter);
+
   return (
     <Card>
       <SectionHeader
         eyebrow="Step 1"
         title="Your team"
-        description="Each instructor gets a private link. They open it, tick their availability for the month, and you see it land here."
+        description="Everyone who covers anything — classes, shifts, or both. Each person gets one private link, ticks their availability once, and you see it land here."
         action={
           !adding && (
             <Button variant="secondary" size="sm" onClick={() => setAdding(true)}>
-              + Add instructor
+              + Add team member
             </Button>
           )
         }
       />
 
+      {counts.all > 0 && (
+        <div className="border-b border-mist/40 px-6 py-3">
+          <CategoryTabs
+            value={filter}
+            onChange={setFilter}
+            counts={counts}
+            allLabel="Everyone"
+          />
+        </div>
+      )}
+
       <div className="divide-y divide-mist/30">
-        {instructors.map((instructor) => {
+        {visible.map((instructor) => {
           const submission = submissions.find(
             (s) => s.instructor_id === instructor.id
           );
@@ -122,8 +165,14 @@ export default function InstructorsPanel({
                   </div>
                   <p className="mt-1 text-sm font-light text-fern">
                     {instructor.formats_taught.length > 0
-                      ? instructor.formats_taught.join(" · ")
-                      : "No formats set yet"}
+                      ? instructor.formats_taught
+                          .map((f) =>
+                            categoryOf(formatCategories, f) === "shift"
+                              ? `${f} (${CATEGORY_LABEL.shift})`
+                              : f
+                          )
+                          .join(" · ")
+                      : "Nothing assigned yet"}
                     {!instructor.email?.trim() && (
                       <span className="text-sand"> · no email on file</span>
                     )}
@@ -229,8 +278,12 @@ export default function InstructorsPanel({
           );
         })}
 
-        {instructors.length === 0 && !adding && (
-          <Empty>No instructors yet — add your first one to get started.</Empty>
+        {visible.length === 0 && !adding && (
+          <Empty>
+            {counts.all === 0
+              ? "Nobody on the team yet — add your first person to get started."
+              : `Nobody covers ${CATEGORY_TEAM_LABEL[filter as "class" | "shift"].toLowerCase()} work yet.`}
+          </Empty>
         )}
 
         {adding && (
@@ -256,14 +309,14 @@ export default function InstructorsPanel({
                 />
               </Field>
               <Field
-                label="Formats they teach"
-                hint="Comma separated. They can correct this themselves on their link."
+                label="What they cover"
+                hint="Classes and shifts alike, comma separated. They can correct this themselves on their link."
                 className="sm:col-span-2"
               >
                 <Input
                   value={formats}
                   onChange={(e) => setFormats(e.target.value)}
-                  placeholder="Reformer, Mat, Serene Blend"
+                  placeholder="Reformer, Mat, Concierge"
                 />
               </Field>
             </div>
@@ -275,7 +328,7 @@ export default function InstructorsPanel({
                 onClick={addInstructor}
                 disabled={saving || !name.trim()}
               >
-                {saving ? "Adding…" : "Add instructor"}
+                {saving ? "Adding…" : "Add team member"}
               </Button>
               <Button
                 variant="ghost"

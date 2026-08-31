@@ -1,5 +1,10 @@
 import Image from "next/image";
 import type { ComponentProps, ReactNode } from "react";
+import {
+  CATEGORIES,
+  CATEGORY_PLURAL,
+  type CategoryFilter,
+} from "@/lib/categories";
 
 /* ---------------------------------------------------------------------------
    Small shared primitives so every screen uses the same Serene Pilates
@@ -252,5 +257,60 @@ export function Empty({ children }: { children: ReactNode }) {
     <p className="px-6 py-10 text-center text-sm font-light text-sage">
       {children}
     </p>
+  );
+}
+
+
+/* --- Category filter ----------------------------------------------------- */
+
+/**
+ * Shared All / Classes / Shifts switch used by the weekly template, the draft
+ * and the team list, so the same mental model applies in all three places.
+ * Renders nothing when only one category is in play — no point offering a
+ * filter for a studio that only runs classes.
+ */
+export function CategoryTabs({
+  value,
+  onChange,
+  counts,
+  allLabel = "All",
+}: {
+  value: CategoryFilter;
+  onChange: (next: CategoryFilter) => void;
+  counts: Record<CategoryFilter, number>;
+  allLabel?: string;
+}) {
+  const present = CATEGORIES.filter((c) => counts[c] > 0);
+  if (present.length < 2) return null;
+
+  const options: { key: CategoryFilter; label: string }[] = [
+    { key: "all", label: allLabel },
+    ...CATEGORIES.map((c) => ({ key: c as CategoryFilter, label: CATEGORY_PLURAL[c] })),
+  ];
+
+  return (
+    <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filter by category">
+      {options.map(({ key, label }) => {
+        const active = value === key;
+        return (
+          <button
+            key={key}
+            type="button"
+            onClick={() => onChange(key)}
+            aria-pressed={active}
+            className={`min-h-[2.25rem] rounded-full border px-3.5 py-1.5 text-sm transition-all duration-200 ${
+              active
+                ? "border-clay bg-clay text-shell"
+                : "border-mist bg-white text-fern hover:border-sage hover:text-ink"
+            }`}
+          >
+            {label}
+            <span className={active ? "ml-1.5 opacity-70" : "ml-1.5 text-sage"}>
+              {counts[key]}
+            </span>
+          </button>
+        );
+      })}
+    </div>
   );
 }

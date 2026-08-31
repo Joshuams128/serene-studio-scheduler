@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { isAuthed } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
-import type { Instructor, Schedule } from "@/lib/types";
+import type { ClassRequirement, Instructor, Schedule } from "@/lib/types";
+import { categoryMap } from "@/lib/categories";
 import {
   buildRecipients,
   emailConfigError,
@@ -11,13 +12,20 @@ import {
 
 async function load(periodStart: string) {
   const db = supabaseAdmin();
-  const [{ data: schedule }, { data: instructors }] = await Promise.all([
-    db.from("schedules").select("*").eq("period_start", periodStart).maybeSingle(),
-    db.from("instructors").select("*").eq("active", true).order("created_at"),
-  ]);
+  const [{ data: schedule }, { data: instructors }, { data: requirements }] =
+    await Promise.all([
+      db.from("schedules").select("*").eq("period_start", periodStart).maybeSingle(),
+      db.from("instructors").select("*").eq("active", true).order("created_at"),
+      db.from("class_requirements").select("format, category"),
+    ]);
   return {
     schedule: schedule as Schedule | null,
     instructors: (instructors ?? []) as Instructor[],
+    // Lets each email work out which categories that person cares about, even
+    // when they have no assignments this month.
+    formatCategories: categoryMap(
+      (requirements ?? []) as Pick<ClassRequirement, "format" | "category">[]
+    ),
   };
 }
 
@@ -32,7 +40,7 @@ export async function GET(req: Request) {
   const periodStart = searchParams.get("periodStart");
   if (!periodStart) return NextResponse.json({ error: "Missing periodStart" }, { status: 400 });
 
-  const { schedule, instructors } = await load(periodStart);
+  const { schedule, instructors, formatCategories } = await load(periodStart);
   if (!schedule) {
     return NextResponse.json({ error: "No schedule for that month yet" }, { status: 404 });
   }
@@ -55,6 +63,7 @@ export async function GET(req: Request) {
     classes: sample.classes,
     periodStart,
     allAssignments: schedule.assignments,
+    formatCategories,
   });
 
   return new NextResponse(html, {
@@ -71,7 +80,7 @@ export async function POST(req: Request) {
   const { periodStart } = await req.json();
   if (!periodStart) return NextResponse.json({ error: "Missing periodStart" }, { status: 400 });
 
-  const { schedule, instructors } = await load(periodStart);
+  const { schedule, instructors, formatCategories } = await load(periodStart);
   if (!schedule) {
     return NextResponse.json(
       { error: "There's no schedule for that month to send." },
@@ -89,7 +98,7 @@ export async function POST(req: Request) {
       {
         error:
           missingEmail.length > 0
-            ? "None of your instructors have an email address on file yet."
+            ? "Nobody on your team has an email address on file yet."
             : "There's nobody to send to yet.",
       },
       { status: 400 }
@@ -100,6 +109,7 @@ export async function POST(req: Request) {
     recipients: sendable,
     periodStart,
     allAssignments: schedule.assignments,
+    formatCategories,
   });
 
   // Only stamp the schedule if at least one email actually went out, so a

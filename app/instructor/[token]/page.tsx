@@ -43,12 +43,18 @@ export default async function InstructorIntakePage({
       .eq("instructor_id", instructor.id)
       .eq("period_start", periodStart)
       .maybeSingle(),
-    db.from("class_requirements").select("format").eq("active", true),
+    db.from("class_requirements").select("format, category").eq("active", true),
   ]);
 
-  const studioFormats = [
-    ...new Set((requirements ?? []).map((r) => r.format).filter(Boolean)),
-  ].sort();
+  // Distinct formats with their category, so the form can group "what do you
+  // cover?" into classes and shifts.
+  const seen = new Map<string, string>();
+  for (const r of requirements ?? []) {
+    if (r.format && !seen.has(r.format)) seen.set(r.format, r.category);
+  }
+  const studioFormats = [...seen.entries()]
+    .map(([format, category]) => ({ format, category }))
+    .sort((a, b) => a.format.localeCompare(b.format));
 
   return (
     <IntakeForm

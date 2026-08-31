@@ -8,6 +8,7 @@ import type {
 import { isPerWeek } from "./types";
 import { datesInMonth, dayOfDate, monthLabel, weeksInMonth } from "./period";
 import { studioHoursSummary } from "./studio";
+import { CATEGORY_LABEL, toCategory, type Category } from "./categories";
 
 /** Postgres `time` comes back as "09:00:00"; everything here compares "09:00". */
 function hhmm(time: string): string {
@@ -23,6 +24,7 @@ type PlannedClass = {
   start: string;
   end: string;
   format: string;
+  category: Category; // display/filter tag only — never affects assignment
   room: string | null;
 };
 
@@ -57,6 +59,7 @@ export function planMonth(
         date,
         day,
         week: weeks.get(date) ?? 0,
+        category: toCategory(r.category),
         start: hhmm(r.start_time),
         end: hhmm(r.end_time),
         format: r.format,
@@ -173,6 +176,11 @@ export async function generateSchedule({
       "applies to every week of the month. A number means it applies only to " +
       "that week — instructors whose availability varies week to week set each " +
       "week separately, so a window for week 2 says nothing about week 3.\n\n" +
+      "Entries are of two kinds. A \"Class\" is taught on the timetable; a " +
+      "\"Shift\" is non-teaching cover such as concierge or front desk. They " +
+      "are scheduled by exactly the same rules and from the same people — one " +
+      "person can do both, and their classes and shifts must never overlap " +
+      "each other. Treat the whole month as one combined workload per person.\n\n" +
       "Studio opening hours (nothing runs outside these):\n" +
       studioHoursSummary()
         .map((h) => `- ${h.days}: ${h.hours}`)
@@ -209,7 +217,7 @@ export async function generateSchedule({
           `availability windows.\n\n` +
           `Instructors:\n${JSON.stringify(instructorData, null, 2)}\n\n` +
           `Classes to fill (${classes.length}):\n${JSON.stringify(
-            classes.map(({ n, date, day, week, start, end, format, room }) => ({
+            classes.map(({ n, date, day, week, start, end, format, category, room }) => ({
               n,
               date,
               day,
@@ -217,6 +225,7 @@ export async function generateSchedule({
               start,
               end,
               format,
+              kind: CATEGORY_LABEL[category],
               room,
             })),
             null,
@@ -256,6 +265,7 @@ export async function generateSchedule({
       start: c.start,
       end: c.end,
       format: c.format,
+      category: c.category,
       room: c.room,
       instructorId: instructor?.id ?? null,
       instructorName: instructor?.name ?? null,
@@ -286,7 +296,7 @@ export async function generateSchedule({
  * worse than an empty one, so anything that breaks a rule is cleared and
  * flagged in the summary rather than quietly shipped.
  */
-function enforceHardRules(
+export function enforceHardRules(
   assignments: ScheduleAssignment[],
   instructors: Instructor[],
   submissions: AvailabilitySubmission[],

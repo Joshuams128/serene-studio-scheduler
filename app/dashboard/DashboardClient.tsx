@@ -29,23 +29,23 @@ const TOUR_STEPS: TourStep[] = [
   },
   {
     target: "tour-team",
-    title: "Step 1 — your instructors",
-    body: "Add each instructor here, then hit “Copy link” and send them their private link by text or email. No passwords for them. You'll see “Waiting” turn into “Submitted” as they reply — click “View” to read exactly what someone sent.",
+    title: "Step 1 — your team",
+    body: "Everyone who covers anything lives here — teaching, front desk, or both. Add them, then hit “Copy link” and send their private link by text or email. No passwords for them. Use the Classes / Shifts tabs to see who covers what, and “View” to read what someone sent.",
   },
   {
     target: "tour-template",
-    title: "Step 2 — the classes you run each week",
-    body: "Set your usual weekly timetable once — Reformer on Mondays at 7, and so on. It carries over month to month, so this is a one-time job. Times default to your studio's opening hours.",
+    title: "Step 2 — what you run each week",
+    body: "Set your usual weekly timetable once — Reformer on Mondays at 7, concierge cover on Saturdays, and so on. Each entry is either a Class or a Shift, and the tabs let you work on one at a time. It carries over month to month, so this is a one-time job.",
   },
   {
     target: "tour-draft",
     title: "Step 3 — draft the schedule",
-    body: "Once a couple of instructors have replied, press this. It spreads your weekly classes across every date in the month and picks who teaches each one, matching everyone's availability, what they teach, and their requests.",
+    body: "Once a couple of people have replied, press this. It spreads your weekly template across every date in the month and picks who covers each class and shift, matching everyone's availability, what they cover, and their requests.",
   },
   {
     target: "tour-schedule",
     title: "Then change whatever you like",
-    body: "Every class gets a dropdown, so swapping someone is one click. You'll see a plain-English summary of what it did, anything it couldn't fill, and each instructor's class count so you can check it's fair.",
+    body: "Every entry gets a dropdown, so swapping someone is one click. Filter to Classes or Shifts to work through one at a time — the draft underneath always covers everything, so nobody gets double-booked between a class and a shift. The counts show each person's total across both.",
   },
   {
     target: "tour-schedule",
@@ -55,7 +55,7 @@ const TOUR_STEPS: TourStep[] = [
   {
     target: "tour-schedule",
     title: "Then email it to everyone",
-    body: "Down at the bottom, “Send to instructors” emails the month out — each person gets their own classes at the top and the full timetable below. Preview it first if you like, and it'll tell you if anyone is missing an email address.",
+    body: "Down at the bottom, “Send to instructors” emails the month out — each person gets their own list at the top and only the parts of the month that apply to them below, so someone who only covers front desk isn't sent the class timetable. Preview it first if you like.",
   },
   {
     title: "That's everything",
@@ -212,6 +212,7 @@ export default function DashboardClient({
               periodStart={periodStart}
               instructors={instructors}
               submissions={submissions}
+              requirements={requirements}
               onChange={setInstructors}
             />
           </div>

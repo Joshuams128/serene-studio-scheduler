@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { isAuthed } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
+import { isCategory, DEFAULT_CATEGORY } from "@/lib/categories";
 
 export async function GET() {
   if (!(await isAuthed())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -17,9 +18,17 @@ export async function GET() {
 export async function POST(req: Request) {
   if (!(await isAuthed())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { dayOfWeek, startTime, endTime, format, room } = await req.json();
+  const { dayOfWeek, startTime, endTime, format, room, category } = await req.json();
   if (!dayOfWeek || !startTime || !endTime || !format) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+  }
+  // The column has a check constraint; reject early with a readable message
+  // rather than surfacing a Postgres error.
+  if (category !== undefined && !isCategory(category)) {
+    return NextResponse.json(
+      { error: `Unknown category "${category}"` },
+      { status: 400 }
+    );
   }
 
   const { data, error } = await supabaseAdmin()
@@ -29,6 +38,7 @@ export async function POST(req: Request) {
       start_time: startTime,
       end_time: endTime,
       format,
+      category: category ?? DEFAULT_CATEGORY,
       room: room || null,
     })
     .select()
