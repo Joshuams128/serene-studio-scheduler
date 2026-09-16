@@ -174,9 +174,10 @@ rule, it leaves the slot empty and says why.
 ## Studio hours
 
 The studio's real opening hours live in [`lib/studio.ts`](lib/studio.ts) and
-drive defaults across the app — toggling a day on the instructor form offers
-exactly those windows, and adding a class seeds the time from that day's opening.
-Anything outside them is flagged rather than blocked.
+drive **defaults** across the app — toggling a day on the instructor form offers
+exactly those windows, and adding a class seeds its start time from that day's
+opening. They are only a convenience: the owner sets whatever times she likes
+and nothing is checked or flagged against them.
 
 | Days | Hours |
 | --- | --- |

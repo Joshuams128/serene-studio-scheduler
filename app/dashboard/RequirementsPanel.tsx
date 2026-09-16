@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { ClassRequirement } from "@/lib/types";
 import { DAYS, DAY_LABELS, formatTime, type Day } from "@/lib/period";
-import { firstWindow, studioHoursLabel, withinStudioHours } from "@/lib/studio";
+import { firstWindow } from "@/lib/studio";
 import {
   CATEGORIES,
   CATEGORY_HINT,
@@ -21,7 +21,6 @@ import {
   Empty,
   Field,
   Input,
-  Note,
   Select,
 } from "@/components/ui";
 import CollapsibleCard from "@/components/Collapsible";
@@ -202,11 +201,6 @@ export default function RequirementsPanel({
                     {filter === "all" && toCategory(r.category) !== "class" && (
                       <Badge tone="clay">{CATEGORY_LABEL[toCategory(r.category)]}</Badge>
                     )}
-                    {!withinStudioHours(
-                      d,
-                      r.start_time.slice(0, 5),
-                      r.end_time.slice(0, 5)
-                    ) && <Badge tone="sand">Outside open hours</Badge>}
                   </div>
                   <span className="flex shrink-0 items-center">
                   <button
@@ -310,18 +304,6 @@ export default function RequirementsPanel({
                 />
               </Field>
             </div>
-            <p className="mt-3 text-xs font-light text-sage">
-              Studio open {DAY_LABELS[day]}: {studioHoursLabel(day)}
-            </p>
-            {!withinStudioHours(day, start, end) && (
-              <div className="mt-3">
-                <Note tone="sand">
-                  That time falls outside the studio&apos;s opening hours on{" "}
-                  {DAY_LABELS[day]}. You can still add it — just checking it&apos;s
-                  deliberate.
-                </Note>
-              </div>
-            )}
             {error && <p className="mt-3 text-sm text-[#a4442c]">{error}</p>}
             <div className="mt-4 flex gap-2">
               <Button
