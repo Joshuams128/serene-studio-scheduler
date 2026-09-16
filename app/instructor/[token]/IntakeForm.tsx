@@ -12,7 +12,7 @@ import {
   weeksInMonth,
   type Day,
 } from "@/lib/period";
-import { STUDIO_HOURS, studioHoursLabel } from "@/lib/studio";
+import { studioHoursLabel, type StudioHours } from "@/lib/studio";
 import {
   CATEGORIES,
   CATEGORY_PLURAL,
@@ -36,14 +36,14 @@ type Range = { start: string; end: string };
 type DayMap = Record<Day, Range[]>;
 
 /** Turning a day on offers the studio's full opening hours for it. */
-function studioRanges(day: Day): Range[] {
-  return STUDIO_HOURS[day].map((w) => ({ ...w }));
+function studioRanges(studioHours: StudioHours, day: Day): Range[] {
+  return [{ ...studioHours[day] }];
 }
 
 /** Every day of the week, filled with the studio's open hours. */
-function fullStudioWeek(days: Day[]): DayMap {
+function fullStudioWeek(days: Day[], studioHours: StudioHours): DayMap {
   const map = emptyDayMap();
-  for (const day of days) map[day] = studioRanges(day);
+  for (const day of days) map[day] = studioRanges(studioHours, day);
   return map;
 }
 
@@ -84,6 +84,7 @@ function DayScheduleEditor({
   onChange,
   days,
   dateFor,
+  studioHours,
 }: {
   value: DayMap;
   onChange: (next: DayMap) => void;
@@ -91,6 +92,7 @@ function DayScheduleEditor({
   days: Day[];
   /** Optional real date to show beside each day, in per-week mode. */
   dateFor?: (day: Day) => string | undefined;
+  studioHours: StudioHours;
 }) {
   function setRanges(day: Day, ranges: Range[]) {
     onChange({ ...value, [day]: ranges });
@@ -118,7 +120,7 @@ function DayScheduleEditor({
                   </span>
                 )}
                 <span className="mt-0.5 block text-xs font-light text-sage">
-                  Studio open {studioHoursLabel(day)}
+                  Studio open {studioHoursLabel(studioHours, day)}
                 </span>
               </span>
               <button
@@ -126,7 +128,7 @@ function DayScheduleEditor({
                 role="switch"
                 aria-checked={on}
                 aria-label={`Available on ${DAY_LABELS[day]}${date ? ` ${date}` : ""}`}
-                onClick={() => setRanges(day, on ? [] : studioRanges(day))}
+                onClick={() => setRanges(day, on ? [] : studioRanges(studioHours, day))}
                 className="-m-2 flex h-10 shrink-0 items-center justify-center p-2"
               >
                 <span
@@ -193,7 +195,7 @@ function DayScheduleEditor({
                 <button
                   type="button"
                   onClick={() =>
-                    setRanges(day, [...ranges, { ...STUDIO_HOURS[day][0] }])
+                    setRanges(day, [...ranges, { ...studioHours[day] }])
                   }
                   className="py-2 text-sm font-medium text-clay transition-opacity hover:opacity-70"
                 >
@@ -217,6 +219,7 @@ export default function IntakeForm({
   formatsTaught,
   studioFormats,
   existing,
+  studioHours,
 }: {
   token: string;
   periodStart: string;
@@ -225,6 +228,7 @@ export default function IntakeForm({
   /** What the studio runs, with the category each format belongs to. */
   studioFormats: { format: string; category: string }[];
   existing: AvailabilitySubmission | null;
+  studioHours: StudioHours;
 }) {
   const weeks = useMemo(() => weeksInMonth(periodStart), [periodStart]);
 
@@ -498,7 +502,7 @@ export default function IntakeForm({
               <div className="flex justify-end px-6 pt-4">
                 <button
                   type="button"
-                  onClick={() => setWeekly(fullStudioWeek(DAYS.slice()))}
+                  onClick={() => setWeekly(fullStudioWeek(DAYS.slice(), studioHours))}
                   className="py-2 text-sm font-medium text-clay transition-opacity hover:opacity-70"
                 >
                   I&apos;m free whenever the studio is open
@@ -508,6 +512,7 @@ export default function IntakeForm({
                 value={weekly}
                 onChange={setWeekly}
                 days={DAYS.slice()}
+                studioHours={studioHours}
               />
             </>
           ) : (
@@ -558,7 +563,7 @@ export default function IntakeForm({
                     onClick={() =>
                       setByWeek((prev) =>
                         prev.map((w, i) =>
-                          i === activeWeek ? fullStudioWeek(weekDays) : w
+                          i === activeWeek ? fullStudioWeek(weekDays, studioHours) : w
                         )
                       )
                     }
@@ -588,6 +593,7 @@ export default function IntakeForm({
                   const date = week?.dates.find((d) => dayOfDate(d) === day);
                   return date ? formatDateShort(date) : undefined;
                 }}
+                studioHours={studioHours}
               />
             </>
           )}

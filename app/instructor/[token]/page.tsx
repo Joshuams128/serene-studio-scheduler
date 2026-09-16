@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { isValidPeriod, nextMonthStart, toMonthStart } from "@/lib/period";
 import type { AvailabilitySubmission } from "@/lib/types";
+import { normalizeStudioHours } from "@/lib/studio";
 import IntakeForm from "./IntakeForm";
 
 // Availability changes as instructors submit — never serve a cached copy of
@@ -36,15 +37,17 @@ export default async function InstructorIntakePage({
   // Anything they already sent for this month, so the form opens pre-filled
   // and they can amend rather than start over. Plus the formats the studio
   // actually runs, offered as one-tap options.
-  const [{ data: existing }, { data: requirements }] = await Promise.all([
-    db
-      .from("availability_submissions")
-      .select("*")
-      .eq("instructor_id", instructor.id)
-      .eq("period_start", periodStart)
-      .maybeSingle(),
-    db.from("class_requirements").select("format, category").eq("active", true),
-  ]);
+  const [{ data: existing }, { data: requirements }, { data: hoursRows }] =
+    await Promise.all([
+      db
+        .from("availability_submissions")
+        .select("*")
+        .eq("instructor_id", instructor.id)
+        .eq("period_start", periodStart)
+        .maybeSingle(),
+      db.from("class_requirements").select("format, category").eq("active", true),
+      db.from("studio_hours").select("*"),
+    ]);
 
   // Distinct formats with their category, so the form can group "what do you
   // cover?" into classes and shifts.
@@ -64,6 +67,7 @@ export default async function InstructorIntakePage({
       formatsTaught={instructor.formats_taught ?? []}
       studioFormats={studioFormats}
       existing={(existing as AvailabilitySubmission | null) ?? null}
+      studioHours={normalizeStudioHours(hoursRows)}
     />
   );
 }

@@ -1,7 +1,7 @@
 import { Resend } from "resend";
 import type { Instructor, ScheduleAssignment } from "./types";
 import { formatDate, formatTime, monthLabel, weeksInMonth } from "./period";
-import { studioHoursSummary } from "./studio";
+import { studioHoursSummary, type StudioHours } from "./studio";
 import {
   CATEGORY_PLURAL,
   categoryOf,
@@ -184,6 +184,7 @@ export function renderScheduleEmail({
   periodStart,
   allAssignments,
   formatCategories,
+  studioHours,
   includeEveryone = true,
 }: {
   instructor: Instructor;
@@ -191,6 +192,7 @@ export function renderScheduleEmail({
   periodStart: string;
   allAssignments: ScheduleAssignment[];
   formatCategories: Map<string, Category>;
+  studioHours: StudioHours;
   /** false = just this person's own list, with no studio-wide timetable. */
   includeEveryone?: boolean;
 }): { subject: string; html: string; text: string } {
@@ -230,7 +232,7 @@ export function renderScheduleEmail({
          </table>`
       : "";
 
-  const hours = studioHoursSummary()
+  const hours = studioHoursSummary(studioHours)
     .map(
       (h) =>
         `<div style="font-size:12px;color:${SAGE};line-height:1.6;">${esc(
@@ -332,12 +334,14 @@ export async function sendScheduleEmails({
   periodStart,
   allAssignments,
   formatCategories,
+  studioHours,
   includeEveryone = true,
 }: {
   recipients: Recipient[];
   periodStart: string;
   allAssignments: ScheduleAssignment[];
   formatCategories: Map<string, Category>;
+  studioHours: StudioHours;
   includeEveryone?: boolean;
 }): Promise<SendResult> {
   const resend = new Resend(process.env.RESEND_API_KEY);
@@ -352,6 +356,7 @@ export async function sendScheduleEmails({
         periodStart,
         allAssignments,
         formatCategories,
+        studioHours,
         includeEveryone,
       });
 

@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase";
 import { isValidPeriod, nextMonthStart, toMonthStart } from "@/lib/period";
+import { normalizeStudioHours } from "@/lib/studio";
 import DashboardClient from "./DashboardClient";
 
 // This page reads live, frequently-changing data (submissions, schedule
@@ -20,13 +21,19 @@ export default async function DashboardPage({
 
   const db = supabaseAdmin();
 
-  const [{ data: instructors }, { data: requirements }, { data: submissions }, { data: schedule }] =
-    await Promise.all([
-      db.from("instructors").select("*").order("created_at", { ascending: true }),
-      db.from("class_requirements").select("*").order("start_time", { ascending: true }),
-      db.from("availability_submissions").select("*").eq("period_start", periodStart),
-      db.from("schedules").select("*").eq("period_start", periodStart).maybeSingle(),
-    ]);
+  const [
+    { data: instructors },
+    { data: requirements },
+    { data: submissions },
+    { data: schedule },
+    { data: hoursRows },
+  ] = await Promise.all([
+    db.from("instructors").select("*").order("created_at", { ascending: true }),
+    db.from("class_requirements").select("*").order("start_time", { ascending: true }),
+    db.from("availability_submissions").select("*").eq("period_start", periodStart),
+    db.from("schedules").select("*").eq("period_start", periodStart).maybeSingle(),
+    db.from("studio_hours").select("*"),
+  ]);
 
   return (
     // Keyed on the period so switching months remounts with fresh state
@@ -38,6 +45,7 @@ export default async function DashboardPage({
       initialRequirements={requirements ?? []}
       initialSubmissions={submissions ?? []}
       initialSchedule={schedule ?? null}
+      initialStudioHours={normalizeStudioHours(hoursRows)}
     />
   );
 }

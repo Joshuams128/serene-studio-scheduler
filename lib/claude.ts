@@ -7,7 +7,7 @@ import type {
 } from "./types";
 import { isPerWeek } from "./types";
 import { datesInMonth, dayOfDate, monthLabel, weeksInMonth } from "./period";
-import { studioHoursSummary } from "./studio";
+import { studioHoursSummary, type StudioHours } from "./studio";
 import { CATEGORY_LABEL, toCategory, type Category } from "./categories";
 
 /** Postgres `time` comes back as "09:00:00"; everything here compares "09:00". */
@@ -117,11 +117,13 @@ export async function generateSchedule({
   instructors,
   submissions,
   requirements,
+  studioHours,
 }: {
   periodStart: string;
   instructors: Instructor[];
   submissions: AvailabilitySubmission[];
   requirements: ClassRequirement[];
+  studioHours: StudioHours;
 }): Promise<{ assignments: ScheduleAssignment[]; summary: string }> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("Missing ANTHROPIC_API_KEY environment variable");
@@ -183,7 +185,7 @@ export async function generateSchedule({
       "each other. Treat the whole month as one combined workload per person.\n\n" +
       "The studio's usual opening hours, for background only — the "
       + "timetable below is authoritative and may fall outside them:\n" +
-      studioHoursSummary()
+      studioHoursSummary(studioHours)
         .map((h) => `- ${h.days}: ${h.hours}`)
         .join("\n") +
       "\n\n" +

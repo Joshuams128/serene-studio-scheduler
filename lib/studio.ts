@@ -1,48 +1,81 @@
 import { DAYS, formatTime, type Day } from "./period";
 
 /**
- * When the studio is actually open. Nothing can be scheduled outside these
- * windows, so they drive the defaults on both the instructor form and the
- * class template — a tap on a day gives you the full open hours for it.
- *
- * Set by the owner; edit this file whenever the hours change.
+ * When the studio is open. Nothing is checked against these hours — they
+ * only drive the defaults on the instructor form and the weekly template,
+ * plus the background context sent to the schedule generator. Stored in the
+ * `studio_hours` table so the owner can change it from the dashboard; this
+ * is just the fallback used before that table has ever been read.
  */
-export const STUDIO_HOURS: Record<Day, { start: string; end: string }[]> = {
-  Mon: [{ start: "06:00", end: "21:00" }],
-  Tue: [{ start: "06:00", end: "21:00" }],
-  Wed: [{ start: "06:00", end: "21:00" }],
-  Thu: [{ start: "06:00", end: "21:00" }],
-  Fri: [{ start: "06:00", end: "21:00" }],
-  Sat: [{ start: "06:00", end: "21:00" }],
-  Sun: [{ start: "06:00", end: "21:00" }],
+export type StudioHours = Record<Day, { start: string; end: string }>;
+
+export const DEFAULT_STUDIO_HOURS: StudioHours = {
+  Mon: { start: "06:00", end: "21:00" },
+  Tue: { start: "06:00", end: "21:00" },
+  Wed: { start: "06:00", end: "21:00" },
+  Thu: { start: "06:00", end: "21:00" },
+  Fri: { start: "06:00", end: "21:00" },
+  Sat: { start: "06:00", end: "21:00" },
+  Sun: { start: "06:00", end: "21:00" },
 };
 
-/** "6:30 AM – 12:00 PM, 5:30 PM – 8:30 PM" */
-export function studioHoursLabel(day: Day): string {
-  return STUDIO_HOURS[day]
-    .map((w) => `${formatTime(w.start)} – ${formatTime(w.end)}`)
-    .join(", ");
+/** A `studio_hours` row as it comes back from Supabase. */
+export type StudioHoursRow = {
+  day_of_week: string;
+  start_time: string;
+  end_time: string;
+};
+
+/**
+ * Postgres rows -> the shape the app works with, falling back to the
+ * defaults for any day that's missing a row (e.g. before the table exists
+ * or has been seeded).
+ */
+export function normalizeStudioHours(
+  rows: StudioHoursRow[] | null | undefined
+): StudioHours {
+  const hours = { ...DEFAULT_STUDIO_HOURS };
+  for (const row of rows ?? []) {
+    if ((DAYS as readonly string[]).includes(row.day_of_week)) {
+      hours[row.day_of_week as Day] = {
+        start: row.start_time.slice(0, 5),
+        end: row.end_time.slice(0, 5),
+      };
+    }
+  }
+  return hours;
+}
+
+/** "6:00 AM – 9:00 PM" */
+export function studioHoursLabel(hours: StudioHours, day: Day): string {
+  const w = hours[day];
+  return `${formatTime(w.start)} – ${formatTime(w.end)}`;
 }
 
 /**
- * The first window of the day, used to seed a sensible start time on a new
- * entry. Only a convenience — the owner sets whatever times she likes, and
- * nothing is checked against opening hours.
+ * The day's open window, used to seed a sensible default on a new entry.
+ * Only a convenience — the owner sets whatever times she likes, and nothing
+ * is checked against opening hours.
  */
-export function firstWindow(day: Day): { start: string; end: string } {
-  return STUDIO_HOURS[day][0];
+export function firstWindow(
+  hours: StudioHours,
+  day: Day
+): { start: string; end: string } {
+  return hours[day];
 }
 
 /** Grouped for display: consecutive days that share the same hours. */
-export function studioHoursSummary(): { days: string; hours: string }[] {
+export function studioHoursSummary(
+  hours: StudioHours
+): { days: string; hours: string }[] {
   const out: { days: string; hours: string }[] = [];
   for (const day of DAYS) {
-    const hours = studioHoursLabel(day);
+    const label = studioHoursLabel(hours, day);
     const last = out[out.length - 1];
-    if (last && last.hours === hours) {
+    if (last && last.hours === label) {
       last.days = `${last.days.split("–")[0]}–${day}`;
     } else {
-      out.push({ days: day, hours });
+      out.push({ days: day, hours: label });
     }
   }
   return out;
