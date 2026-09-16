@@ -61,6 +61,7 @@ export default function ScheduleGrid({
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState("");
+  const [sentSoFar, setSentSoFar] = useState<string[]>([]);
   const [sendResult, setSendResult] = useState<{
     sent: string[];
     failed: { name: string; email: string; error: string }[];
@@ -115,7 +116,7 @@ export default function ScheduleGrid({
     setDirty(true);
   }
 
-  async function save(status?: "approved") {
+  async function save(status?: "approved"): Promise<boolean> {
     setSaving(status ? "approve" : "save");
     setError("");
     const res = await fetch("/api/schedule", {
@@ -125,9 +126,13 @@ export default function ScheduleGrid({
     });
     const data = await res.json();
     setSaving(null);
-    if (!res.ok) return setError(data.error ?? "Couldn't save those changes.");
+    if (!res.ok) {
+      setError(data.error ?? "Couldn't save those changes.");
+      return false;
+    }
     onSaved(data.schedule);
     setDirty(false);
+    return true;
   }
 
   async function remove() {
@@ -143,6 +148,11 @@ export default function ScheduleGrid({
       return setError(data.error ?? "Couldn't delete the draft.");
     }
     onDeleted();
+  }
+
+  async function saveThenSend() {
+    const saved = await save();
+    if (saved) await send();
   }
 
   async function send() {
@@ -170,6 +180,9 @@ export default function ScheduleGrid({
       failed: data.failed,
       warning: data.warning,
     });
+    setSentSoFar((prev) => [...new Set([...prev, ...(data.sent ?? [])])]);
+    // Clear the ticks so the next batch starts from a clean slate.
+    setPicked(new Set());
     setConfirmingSend(false);
     if (data.schedule) onSaved(data.schedule);
   }
@@ -189,6 +202,9 @@ export default function ScheduleGrid({
   // Who this send would actually reach.
   const recipients =
     audience === "all" ? withEmail : withEmail.filter((i) => picked.has(i.id));
+
+  // Anyone with an address who hasn't been emailed yet on this page.
+  const remaining = withEmail.filter((i) => !sentSoFar.includes(i.name));
 
   function togglePicked(id: string) {
     setPicked((prev) => {
@@ -439,6 +455,17 @@ export default function ScheduleGrid({
                 {schedule.sent_to_count === 1 ? "person" : "people"}.
               </p>
             )}
+            {sentSoFar.length > 0 && (
+              <p className="mt-1 text-xs font-light text-sage">
+                Emailed so far on this page ({sentSoFar.length}):{" "}
+                <span className="text-fern">{sentSoFar.join(", ")}</span>
+                {remaining.length > 0 && (
+                  <>
+                    {" · "}still to go: {remaining.map((i) => i.name).join(", ")}
+                  </>
+                )}
+              </p>
+            )}
           </div>
 
           {!confirmingSend && (
@@ -520,6 +547,15 @@ export default function ScheduleGrid({
                     {picked.size} of {withEmail.length} selected
                   </span>
                   <span className="flex gap-3">
+                    {remaining.length > 0 && remaining.length < withEmail.length && (
+                      <button
+                        type="button"
+                        onClick={() => setPicked(new Set(remaining.map((i) => i.id)))}
+                        className="py-1 text-xs font-medium text-clay transition-opacity hover:opacity-70"
+                      >
+                        Select the {remaining.length} not yet emailed
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => setPicked(new Set(withEmail.map((i) => i.id)))}
@@ -553,6 +589,11 @@ export default function ScheduleGrid({
                         <span className="font-light text-sage">
                           {i.email?.trim()}
                         </span>
+                        {sentSoFar.includes(i.name) && (
+                          <span className="ml-1.5 text-xs text-sage">
+                            ✓ emailed
+                          </span>
+                        )}
                       </span>
                     </label>
                   ))}
@@ -583,14 +624,29 @@ export default function ScheduleGrid({
                 “Needs cover” in the email.
               </p>
             )}
+            {dirty && (
+              <div className="mt-3">
+                <Note tone="sand">
+                  You have unsaved changes to this draft. The email is built
+                  from the saved version, so those edits would be left out —
+                  they&apos;ll be saved first.
+                </Note>
+              </div>
+            )}
             <div className="mt-4 flex flex-wrap gap-2">
               <Button
                 variant="primary"
                 size="sm"
-                onClick={send}
-                disabled={sending}
+                onClick={dirty ? saveThenSend : send}
+                disabled={sending || saving !== null}
               >
-                {sending ? "Sending…" : "Yes, send now"}
+                {sending
+                  ? "Sending…"
+                  : saving === "save"
+                    ? "Saving…"
+                    : dirty
+                      ? "Save changes and send"
+                      : "Yes, send now"}
               </Button>
               <Button
                 variant="ghost"
