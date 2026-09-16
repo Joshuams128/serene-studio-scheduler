@@ -55,6 +55,10 @@ export default function ScheduleGrid({
   const [error, setError] = useState("");
 
   const [confirmingSend, setConfirmingSend] = useState(false);
+  // "all" sends to everyone with an address; "some" sends only to the ticked
+  // people. Also the safe way to do a first live test — tick just yourself.
+  const [audience, setAudience] = useState<"all" | "some">("all");
+  const [picked, setPicked] = useState<Set<string>>(new Set());
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState("");
   const [sendResult, setSendResult] = useState<{
@@ -148,7 +152,12 @@ export default function ScheduleGrid({
     const res = await fetch("/api/schedule/send", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ periodStart }),
+      body: JSON.stringify({
+        periodStart,
+        // Omitted entirely when sending to everyone, so the server keeps its
+        // existing "all active people with an address" behaviour.
+        ...(audience === "some" ? { instructorIds: [...picked] } : {}),
+      }),
     });
     const data = await res.json();
     setSending(false);
@@ -176,6 +185,19 @@ export default function ScheduleGrid({
 
   const withEmail = instructors.filter((i) => i.email?.trim());
   const withoutEmail = instructors.filter((i) => !i.email?.trim());
+
+  // Who this send would actually reach.
+  const recipients =
+    audience === "all" ? withEmail : withEmail.filter((i) => picked.has(i.id));
+
+  function togglePicked(id: string) {
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   // How many classes each instructor ended up with — the fairness check the
   // owner would otherwise do by hand.
@@ -444,28 +466,110 @@ export default function ScheduleGrid({
                   setSendError("");
                   setConfirmingSend(true);
                 }}
-                disabled={withEmail.length === 0}
+                disabled={recipients.length === 0}
                 title={
                   withEmail.length === 0
                     ? "Nobody on the team has an email address on file yet"
-                    : undefined
+                    : recipients.length === 0
+                      ? "Tick at least one person to send to"
+                      : undefined
                 }
               >
-                {schedule.sent_at ? "Send again" : "Send to"} {withEmail.length}{" "}
-                {withEmail.length === 1 ? "person" : "people"}
+                {schedule.sent_at ? "Send again" : "Send to"} {recipients.length}{" "}
+                {recipients.length === 1 ? "person" : "people"}
               </Button>
             </div>
           )}
         </div>
 
+        {!confirmingSend && withEmail.length > 0 && (
+          <div className="mt-4 border-t border-mist/40 pt-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-light text-fern">Send to</span>
+              {(
+                [
+                  ["all", `Everyone (${withEmail.length})`],
+                  ["some", "Choose who"],
+                ] as const
+              ).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => {
+                    setAudience(key);
+                    // Opening the picker starts from nobody, so a stray click
+                    // can never mail the whole team.
+                    if (key === "some") setPicked(new Set());
+                  }}
+                  aria-pressed={audience === key}
+                  className={`min-h-[2.25rem] rounded-full border px-3.5 py-1.5 text-sm transition-all duration-200 ${
+                    audience === key
+                      ? "border-clay bg-clay text-shell"
+                      : "border-mist bg-white text-fern hover:border-sage hover:text-ink"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {audience === "some" && (
+              <div className="mt-3 rounded-xl border border-mist/50 bg-shell p-3">
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-xs font-medium text-fern">
+                    {picked.size} of {withEmail.length} selected
+                  </span>
+                  <span className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setPicked(new Set(withEmail.map((i) => i.id)))}
+                      className="py-1 text-xs font-medium text-clay transition-opacity hover:opacity-70"
+                    >
+                      Select all
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPicked(new Set())}
+                      className="py-1 text-xs font-medium text-clay transition-opacity hover:opacity-70"
+                    >
+                      Clear
+                    </button>
+                  </span>
+                </div>
+                <div className="max-h-56 space-y-0.5 overflow-y-auto">
+                  {withEmail.map((i) => (
+                    <label
+                      key={i.id}
+                      className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-2 transition-colors hover:bg-paper"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={picked.has(i.id)}
+                        onChange={() => togglePicked(i.id)}
+                        className="h-4 w-4 shrink-0 cursor-pointer rounded border-mist accent-[#BC6C24]"
+                      />
+                      <span className="min-w-0 text-sm text-ink">
+                        {i.name}{" "}
+                        <span className="font-light text-sage">
+                          {i.email?.trim()}
+                        </span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         {confirmingSend && (
           <div className="mt-4 rounded-xl border border-clay/25 bg-shell p-4">
             <p className="text-sm font-medium text-ink">
               Send the {monthLabel(periodStart)} schedule to{" "}
-              {withEmail.length} {withEmail.length === 1 ? "person" : "people"}?
+              {recipients.length} {recipients.length === 1 ? "person" : "people"}?
             </p>
             <ul className="mt-2 space-y-0.5">
-              {withEmail.map((i) => (
+              {recipients.map((i) => (
                 <li key={i.id} className="text-sm font-light text-fern">
                   {i.name}{" "}
                   <span className="text-sage">&lt;{i.email?.trim()}&gt;</span>

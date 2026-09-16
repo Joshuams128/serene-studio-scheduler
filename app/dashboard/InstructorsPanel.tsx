@@ -46,6 +46,7 @@ export default function InstructorsPanel({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   async function addInstructor() {
@@ -72,6 +73,42 @@ export default function InstructorsPanel({
     setEmail("");
     setFormats("");
     setAdding(false);
+  }
+
+  function startEditing(i: Instructor) {
+    setAdding(false);
+    setEditingId(i.id);
+    setName(i.name);
+    setEmail(i.email ?? "");
+    setFormats(i.formats_taught.join(", "));
+    setError("");
+  }
+
+  async function saveEdit() {
+    if (!editingId || !name.trim()) return;
+    setSaving(true);
+    setError("");
+    const res = await fetch("/api/instructors", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: editingId,
+        name: name.trim(),
+        email: email.trim(),
+        formatsTaught: formats
+          .split(",")
+          .map((f) => f.trim())
+          .filter(Boolean),
+      }),
+    });
+    const data = await res.json();
+    setSaving(false);
+    if (!res.ok) return setError(data.error ?? "Couldn't save that change.");
+    onChange(instructors.map((i) => (i.id === editingId ? data.instructor : i)));
+    setEditingId(null);
+    setName("");
+    setEmail("");
+    setFormats("");
   }
 
   async function removeInstructor(id: string, instructorName: string) {
@@ -125,7 +162,8 @@ export default function InstructorsPanel({
         title="Your team"
         description="Everyone who covers anything — classes, shifts, or both. Each person gets one private link, ticks their availability once, and you see it land here."
         action={
-          !adding && (
+          !adding &&
+          !editingId && (
             <Button variant="secondary" size="sm" onClick={() => setAdding(true)}>
               + Add team member
             </Button>
@@ -189,6 +227,13 @@ export default function InstructorsPanel({
                       {isOpen ? "Hide" : "View"}
                     </Button>
                   )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => startEditing(instructor)}
+                  >
+                    Edit
+                  </Button>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -278,7 +323,7 @@ export default function InstructorsPanel({
           );
         })}
 
-        {visible.length === 0 && !adding && (
+        {visible.length === 0 && !adding && !editingId && (
           <Empty>
             {counts.all === 0
               ? "Nobody on the team yet — add your first person to get started."
@@ -286,8 +331,13 @@ export default function InstructorsPanel({
           </Empty>
         )}
 
-        {adding && (
+        {(adding || editingId) && (
           <div className="bg-paper/60 px-6 py-5">
+            {editingId && (
+              <p className="eyebrow mb-3 text-sage">
+                Editing — their availability is kept
+              </p>
+            )}
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="Name">
                 <Input
@@ -325,16 +375,21 @@ export default function InstructorsPanel({
               <Button
                 variant="primary"
                 size="sm"
-                onClick={addInstructor}
+                onClick={editingId ? saveEdit : addInstructor}
                 disabled={saving || !name.trim()}
               >
-                {saving ? "Adding…" : "Add team member"}
+                {saving
+                  ? "Saving…"
+                  : editingId
+                    ? "Save changes"
+                    : "Add team member"}
               </Button>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => {
                   setAdding(false);
+                  setEditingId(null);
                   setError("");
                 }}
               >
