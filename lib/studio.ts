@@ -39,18 +39,13 @@ export function studioHoursLabel(day: Day): string {
     .join(", ");
 }
 
-/** The first window of the day, used to seed a new class slot. */
+/**
+ * The first window of the day, used to seed a sensible start time on a new
+ * entry. Only a convenience — the owner sets whatever times she likes, and
+ * nothing is checked against opening hours.
+ */
 export function firstWindow(day: Day): { start: string; end: string } {
   return STUDIO_HOURS[day][0];
-}
-
-/** True when a time range sits inside one of the day's open windows. */
-export function withinStudioHours(
-  day: Day,
-  start: string,
-  end: string
-): boolean {
-  return STUDIO_HOURS[day].some((w) => w.start <= start && w.end >= end);
 }
 
 /** Grouped for display: consecutive days that share the same hours. */

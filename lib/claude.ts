@@ -181,7 +181,8 @@ export async function generateSchedule({
       "are scheduled by exactly the same rules and from the same people — one " +
       "person can do both, and their classes and shifts must never overlap " +
       "each other. Treat the whole month as one combined workload per person.\n\n" +
-      "Studio opening hours (nothing runs outside these):\n" +
+      "The studio's usual opening hours, for background only — the "
+      + "timetable below is authoritative and may fall outside them:\n" +
       studioHoursSummary()
         .map((h) => `- ${h.days}: ${h.hours}`)
         .join("\n") +
