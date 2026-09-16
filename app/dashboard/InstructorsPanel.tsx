@@ -16,13 +16,12 @@ import {
 import {
   Badge,
   Button,
-  Card,
   CategoryTabs,
   Empty,
   Field,
   Input,
-  SectionHeader,
 } from "@/components/ui";
+import CollapsibleCard from "@/components/Collapsible";
 
 export default function InstructorsPanel({
   periodStart,
@@ -155,21 +154,28 @@ export default function InstructorsPanel({
 
   const visible = instructors.filter(coversFilter);
 
+  const submittedCount = instructors.filter((i) =>
+    submissions.some((s) => s.instructor_id === i.id)
+  ).length;
+
   return (
-    <Card>
-      <SectionHeader
-        eyebrow="Step 1"
-        title="Your team"
-        description="Everyone who covers anything — classes, shifts, or both. Each person gets one private link, ticks their availability once, and you see it land here."
-        action={
-          !adding &&
-          !editingId && (
-            <Button variant="secondary" size="sm" onClick={() => setAdding(true)}>
-              + Add team member
-            </Button>
-          )
-        }
-      />
+    <CollapsibleCard
+      id="team"
+      eyebrow="Step 1"
+      title="Your team"
+      description="Everyone who covers anything — classes, shifts, or both. Each person gets one private link, ticks their availability once, and you see it land here."
+      summary={`${instructors.length} ${
+        instructors.length === 1 ? "person" : "people"
+      } · ${submittedCount} submitted`}
+      action={
+        !adding &&
+        !editingId && (
+          <Button variant="secondary" size="sm" onClick={() => setAdding(true)}>
+            + Add team member
+          </Button>
+        )
+      }
+    >
 
       {counts.all > 0 && (
         <div className="border-b border-mist/40 px-6 py-3">
@@ -399,6 +405,6 @@ export default function InstructorsPanel({
           </div>
         )}
       </div>
-    </Card>
+    </CollapsibleCard>
   );
 }

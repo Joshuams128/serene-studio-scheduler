@@ -85,4 +85,17 @@ export type Schedule = {
   /** When this schedule was last emailed out, and to how many instructors. */
   sent_at: string | null;
   sent_to_count: number;
+  /**
+   * Everyone who has ever been emailed this schedule, so the owner can send in
+   * batches across sessions and still see who is left. Older rows predate the
+   * column, so treat a missing value as an empty list.
+   */
+  sent_to?: SentRecord[];
+};
+
+export type SentRecord = {
+  instructorId: string;
+  name: string;
+  email: string;
+  sentAt: string;
 };

@@ -184,12 +184,15 @@ export function renderScheduleEmail({
   periodStart,
   allAssignments,
   formatCategories,
+  includeEveryone = true,
 }: {
   instructor: Instructor;
   classes: ScheduleAssignment[];
   periodStart: string;
   allAssignments: ScheduleAssignment[];
   formatCategories: Map<string, Category>;
+  /** false = just this person's own list, with no studio-wide timetable. */
+  includeEveryone?: boolean;
 }): { subject: string; html: string; text: string } {
   const month = monthLabel(periodStart);
   const firstName = instructor.name.split(" ")[0];
@@ -197,7 +200,9 @@ export function renderScheduleEmail({
 
   // Only show the parts of the month this person has anything to do with.
   const mine = relevantCategories(classes, instructor, formatCategories);
-  const relevant = allAssignments.filter((a) => mine.has(toCategory(a.category)));
+  const relevant = includeEveryone
+    ? allAssignments.filter((a) => mine.has(toCategory(a.category)))
+    : [];
   const categoryWord = describeCategories(mine);
 
   const subject =
@@ -210,9 +215,13 @@ export function renderScheduleEmail({
       ? `Here are your ${esc(categoryWord)} for ${esc(month)} — ${describeWorkload(
           classes
         )} in total.`
-      : `You're not down for any ${esc(categoryWord)} in ${esc(
-          month
-        )} at the moment. The full timetable is below in case anything changes.`;
+      : includeEveryone
+        ? `You're not down for any ${esc(categoryWord)} in ${esc(
+            month
+          )} at the moment. The full timetable is below in case anything changes.`
+        : `You're not down for any ${esc(categoryWord)} in ${esc(
+            month
+          )} at the moment. We'll be in touch if that changes.`;
 
   const mineTable =
     count > 0
@@ -323,11 +332,13 @@ export async function sendScheduleEmails({
   periodStart,
   allAssignments,
   formatCategories,
+  includeEveryone = true,
 }: {
   recipients: Recipient[];
   periodStart: string;
   allAssignments: ScheduleAssignment[];
   formatCategories: Map<string, Category>;
+  includeEveryone?: boolean;
 }): Promise<SendResult> {
   const resend = new Resend(process.env.RESEND_API_KEY);
   const from = process.env.SCHEDULE_FROM_EMAIL as string;
@@ -341,6 +352,7 @@ export async function sendScheduleEmails({
         periodStart,
         allAssignments,
         formatCategories,
+        includeEveryone,
       });
 
       const { error } = await resend.emails.send({
