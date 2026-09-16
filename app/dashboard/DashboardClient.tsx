@@ -9,6 +9,7 @@ import type {
   Schedule,
 } from "@/lib/types";
 import { addMonths, monthLabel, monthLabelShort } from "@/lib/period";
+import type { StudioHours } from "@/lib/studio";
 import SiteHeader from "@/components/SiteHeader";
 import LogoutButton from "@/components/LogoutButton";
 import ScheduleGrid from "@/components/ScheduleGrid";
@@ -17,6 +18,7 @@ import { Button, Note } from "@/components/ui";
 import CollapsibleCard from "@/components/Collapsible";
 import InstructorsPanel from "./InstructorsPanel";
 import RequirementsPanel from "./RequirementsPanel";
+import StudioHoursPanel from "./StudioHoursPanel";
 
 const TOUR_STEPS: TourStep[] = [
   {
@@ -75,12 +77,14 @@ export default function DashboardClient({
   initialRequirements,
   initialSubmissions,
   initialSchedule,
+  initialStudioHours,
 }: {
   periodStart: string;
   initialInstructors: Instructor[];
   initialRequirements: ClassRequirement[];
   initialSubmissions: AvailabilitySubmission[];
   initialSchedule: Schedule | null;
+  initialStudioHours: StudioHours;
 }) {
   const router = useRouter();
   const [navigating, startNavigating] = useTransition();
@@ -89,6 +93,7 @@ export default function DashboardClient({
   const [requirements, setRequirements] = useState(initialRequirements);
   const [submissions] = useState(initialSubmissions);
   const [schedule, setSchedule] = useState(initialSchedule);
+  const [studioHours, setStudioHours] = useState(initialStudioHours);
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState("");
   // Whether to run the tour unprompted. Read through useSyncExternalStore so
@@ -207,6 +212,8 @@ export default function DashboardClient({
       </div>
 
       <main className="mx-auto max-w-6xl space-y-6 px-4 py-8 sm:px-6 lg:px-8">
+        <StudioHoursPanel hours={studioHours} onChange={setStudioHours} />
+
         <div className="grid gap-6 lg:grid-cols-2">
           <div id="tour-team">
             <InstructorsPanel
@@ -220,6 +227,7 @@ export default function DashboardClient({
           <div id="tour-template">
             <RequirementsPanel
               requirements={requirements}
+              studioHours={studioHours}
               onChange={setRequirements}
             />
           </div>

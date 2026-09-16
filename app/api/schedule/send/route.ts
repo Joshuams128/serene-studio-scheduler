@@ -3,6 +3,7 @@ import { isAuthed } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
 import type { ClassRequirement, Instructor, Schedule, SentRecord } from "@/lib/types";
 import { categoryMap } from "@/lib/categories";
+import { normalizeStudioHours } from "@/lib/studio";
 import {
   buildRecipients,
   emailConfigError,
@@ -12,11 +13,12 @@ import {
 
 async function load(periodStart: string) {
   const db = supabaseAdmin();
-  const [{ data: schedule }, { data: instructors }, { data: requirements }] =
+  const [{ data: schedule }, { data: instructors }, { data: requirements }, { data: hoursRows }] =
     await Promise.all([
       db.from("schedules").select("*").eq("period_start", periodStart).maybeSingle(),
       db.from("instructors").select("*").eq("active", true).order("created_at"),
       db.from("class_requirements").select("format, category"),
+      db.from("studio_hours").select("*"),
     ]);
   return {
     schedule: schedule as Schedule | null,
@@ -26,6 +28,7 @@ async function load(periodStart: string) {
     formatCategories: categoryMap(
       (requirements ?? []) as Pick<ClassRequirement, "format" | "category">[]
     ),
+    studioHours: normalizeStudioHours(hoursRows),
   };
 }
 
@@ -40,7 +43,7 @@ export async function GET(req: Request) {
   const periodStart = searchParams.get("periodStart");
   if (!periodStart) return NextResponse.json({ error: "Missing periodStart" }, { status: 400 });
 
-  const { schedule, instructors, formatCategories } = await load(periodStart);
+  const { schedule, instructors, formatCategories, studioHours } = await load(periodStart);
   if (!schedule) {
     return NextResponse.json({ error: "No schedule for that month yet" }, { status: 404 });
   }
@@ -64,6 +67,7 @@ export async function GET(req: Request) {
     periodStart,
     allAssignments: schedule.assignments,
     formatCategories,
+    studioHours,
     // ?personal=1 previews the trimmed version with no studio-wide timetable.
     includeEveryone: searchParams.get("personal") !== "1",
   });
@@ -89,7 +93,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const { schedule, instructors, formatCategories } = await load(periodStart);
+  const { schedule, instructors, formatCategories, studioHours } = await load(periodStart);
   if (!schedule) {
     return NextResponse.json(
       { error: "There's no schedule for that month to send." },
@@ -149,6 +153,7 @@ export async function POST(req: Request) {
     periodStart,
     allAssignments: schedule.assignments,
     formatCategories,
+    studioHours,
     includeEveryone: includeEveryone !== false,
   });
 

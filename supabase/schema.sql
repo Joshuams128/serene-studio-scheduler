@@ -82,3 +82,27 @@ alter table class_requirements add constraint class_requirements_category_check
 -- person; re-sending to someone just updates their timestamp.
 -- [{ "instructorId": "...", "name": "...", "email": "...", "sentAt": "..." }, ...]
 alter table schedules add column if not exists sent_to jsonb not null default '[]';
+
+-- The studio's operating hours, one row per weekday, editable by the owner
+-- from the dashboard (see /api/studio-hours). Used as the default opening
+-- hours offered on the instructor form and the weekly template, and sent to
+-- the schedule generator as background context. Re-running this file never
+-- overwrites hours she's already changed, thanks to the on-conflict below.
+create table if not exists studio_hours (
+  day_of_week text primary key check (day_of_week in ('Mon','Tue','Wed','Thu','Fri','Sat','Sun')),
+  start_time time not null,
+  end_time time not null
+);
+
+insert into studio_hours (day_of_week, start_time, end_time)
+values
+  ('Mon', '06:00', '21:00'),
+  ('Tue', '06:00', '21:00'),
+  ('Wed', '06:00', '21:00'),
+  ('Thu', '06:00', '21:00'),
+  ('Fri', '06:00', '21:00'),
+  ('Sat', '06:00', '21:00'),
+  ('Sun', '06:00', '21:00')
+on conflict (day_of_week) do nothing;
+
+alter table studio_hours enable row level security;

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { ClassRequirement } from "@/lib/types";
 import { DAYS, DAY_LABELS, formatTime, type Day } from "@/lib/period";
-import { firstWindow } from "@/lib/studio";
+import { firstWindow, type StudioHours } from "@/lib/studio";
 import {
   CATEGORIES,
   CATEGORY_HINT,
@@ -40,9 +40,11 @@ function addMinutes(time: string, minutes: number): string {
  */
 export default function RequirementsPanel({
   requirements,
+  studioHours,
   onChange,
 }: {
   requirements: ClassRequirement[];
+  studioHours: StudioHours;
   onChange: (next: ClassRequirement[]) => void;
 }) {
   const [adding, setAdding] = useState(false);
@@ -50,8 +52,8 @@ export default function RequirementsPanel({
   const [filter, setFilter] = useState<CategoryFilter>("all");
   const [category, setCategory] = useState<Category>(DEFAULT_CATEGORY);
   const [day, setDay] = useState<Day>("Mon");
-  const [start, setStart] = useState(firstWindow("Mon").start);
-  const [end, setEnd] = useState(addMinutes(firstWindow("Mon").start, 60));
+  const [start, setStart] = useState(firstWindow(studioHours, "Mon").start);
+  const [end, setEnd] = useState(addMinutes(firstWindow(studioHours, "Mon").start, 60));
   const [format, setFormat] = useState("");
   const [room, setRoom] = useState("");
   const [saving, setSaving] = useState(false);
@@ -260,9 +262,8 @@ export default function RequirementsPanel({
                   onChange={(e) => {
                     const next = e.target.value as Day;
                     setDay(next);
-                    // Reseed from that day's opening time — Friday and the
-                    // weekend open later than Mon-Thu.
-                    const open = firstWindow(next).start;
+                    // Reseed from that day's opening time in case it differs.
+                    const open = firstWindow(studioHours, next).start;
                     setStart(open);
                     setEnd(addMinutes(open, 60));
                   }}
