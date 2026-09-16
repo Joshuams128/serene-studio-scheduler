@@ -5,31 +5,16 @@ import { DAYS, formatTime, type Day } from "./period";
  * windows, so they drive the defaults on both the instructor form and the
  * class template — a tap on a day gives you the full open hours for it.
  *
- * Source: the Studio Hours on serenepilates.ca.
+ * Set by the owner; edit this file whenever the hours change.
  */
 export const STUDIO_HOURS: Record<Day, { start: string; end: string }[]> = {
-  Mon: [
-    { start: "06:30", end: "12:00" },
-    { start: "17:30", end: "20:30" },
-  ],
-  Tue: [
-    { start: "06:30", end: "12:00" },
-    { start: "17:30", end: "20:30" },
-  ],
-  Wed: [
-    { start: "06:30", end: "12:00" },
-    { start: "17:30", end: "20:30" },
-  ],
-  Thu: [
-    { start: "06:30", end: "12:00" },
-    { start: "17:30", end: "20:30" },
-  ],
-  Fri: [
-    { start: "07:30", end: "12:00" },
-    { start: "16:00", end: "18:00" },
-  ],
-  Sat: [{ start: "09:00", end: "14:00" }],
-  Sun: [{ start: "09:00", end: "14:00" }],
+  Mon: [{ start: "06:00", end: "21:00" }],
+  Tue: [{ start: "06:00", end: "21:00" }],
+  Wed: [{ start: "06:00", end: "21:00" }],
+  Thu: [{ start: "06:00", end: "21:00" }],
+  Fri: [{ start: "06:00", end: "21:00" }],
+  Sat: [{ start: "06:00", end: "21:00" }],
+  Sun: [{ start: "06:00", end: "21:00" }],
 };
 
 /** "6:30 AM – 12:00 PM, 5:30 PM – 8:30 PM" */
