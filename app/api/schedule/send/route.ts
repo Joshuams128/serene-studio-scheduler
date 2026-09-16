@@ -77,8 +77,15 @@ export async function POST(req: Request) {
   const configError = emailConfigError();
   if (configError) return NextResponse.json({ error: configError }, { status: 400 });
 
-  const { periodStart } = await req.json();
+  const { periodStart, instructorIds } = await req.json();
   if (!periodStart) return NextResponse.json({ error: "Missing periodStart" }, { status: 400 });
+
+  if (instructorIds !== undefined && !Array.isArray(instructorIds)) {
+    return NextResponse.json(
+      { error: "instructorIds must be an array of team member ids" },
+      { status: 400 }
+    );
+  }
 
   const { schedule, instructors, formatCategories } = await load(periodStart);
   if (!schedule) {
@@ -93,6 +100,36 @@ export async function POST(req: Request) {
     schedule.assignments
   );
 
+  // Omitting instructorIds keeps the original behaviour: everyone with an
+  // address. Passing a list narrows it — used by "Choose who" in the dashboard,
+  // and the safe way to send a single test to yourself first.
+  let chosen = sendable;
+  if (Array.isArray(instructorIds)) {
+    const wanted = new Set<string>(instructorIds);
+    chosen = sendable.filter((r) => wanted.has(r.instructor.id));
+
+    const unreachable = [...wanted].filter(
+      (id) => !sendable.some((r) => r.instructor.id === id)
+    );
+    if (chosen.length === 0) {
+      return NextResponse.json(
+        {
+          error:
+            wanted.size === 0
+              ? "Pick at least one person to send to."
+              : "None of the people you picked have an email address on file.",
+        },
+        { status: 400 }
+      );
+    }
+    if (unreachable.length > 0) {
+      // Someone was ticked then deleted, or lost their address mid-flow.
+      console.warn(
+        `[send] skipping ${unreachable.length} unreachable recipient(s)`
+      );
+    }
+  }
+
   if (sendable.length === 0) {
     return NextResponse.json(
       {
@@ -106,7 +143,7 @@ export async function POST(req: Request) {
   }
 
   const result = await sendScheduleEmails({
-    recipients: sendable,
+    recipients: chosen,
     periodStart,
     allAssignments: schedule.assignments,
     formatCategories,

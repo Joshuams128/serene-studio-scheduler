@@ -34,6 +34,46 @@ export async function POST(req: Request) {
   return NextResponse.json({ instructor: data });
 }
 
+/**
+ * Edit a team member in place. Deliberately separate from DELETE: correcting a
+ * name, address or what someone covers must never cost them their availability
+ * submission, which deleting would cascade away.
+ */
+export async function PATCH(req: Request) {
+  if (!(await isAuthed())) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { id, name, email, formatsTaught } = await req.json();
+  if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+
+  if (name !== undefined && !String(name).trim()) {
+    return NextResponse.json({ error: "Name can't be empty" }, { status: 400 });
+  }
+  if (formatsTaught !== undefined && !Array.isArray(formatsTaught)) {
+    return NextResponse.json({ error: "formatsTaught must be an array" }, { status: 400 });
+  }
+
+  const update: Record<string, unknown> = {};
+  if (name !== undefined) update.name = String(name).trim();
+  if (email !== undefined) update.email = String(email).trim() || null;
+  if (formatsTaught !== undefined) {
+    update.formats_taught = formatsTaught.map((f: unknown) => String(f).trim()).filter(Boolean);
+  }
+
+  if (Object.keys(update).length === 0) {
+    return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
+  }
+
+  const { data, error } = await supabaseAdmin()
+    .from("instructors")
+    .update(update)
+    .eq("id", id)
+    .select()
+    .single();
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ instructor: data });
+}
+
 // Availability submissions cascade on delete (see supabase/schema.sql), so
 // removing an instructor also clears what they'd sent in.
 export async function DELETE(req: Request) {

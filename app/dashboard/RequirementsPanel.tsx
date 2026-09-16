@@ -48,6 +48,7 @@ export default function RequirementsPanel({
   onChange: (next: ClassRequirement[]) => void;
 }) {
   const [adding, setAdding] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [filter, setFilter] = useState<CategoryFilter>("all");
   const [category, setCategory] = useState<Category>(DEFAULT_CATEGORY);
   const [day, setDay] = useState<Day>("Mon");
@@ -82,6 +83,51 @@ export default function RequirementsPanel({
     setRoom("");
   }
 
+  function startEditing(r: ClassRequirement) {
+    setAdding(false);
+    setEditingId(r.id);
+    setCategory(toCategory(r.category));
+    setDay(r.day_of_week as Day);
+    setStart(r.start_time.slice(0, 5));
+    setEnd(r.end_time.slice(0, 5));
+    setFormat(r.format);
+    setRoom(r.room ?? "");
+    setError("");
+  }
+
+  function stopEditing() {
+    setEditingId(null);
+    setError("");
+  }
+
+  async function saveEdit() {
+    if (!editingId || !format.trim()) return;
+    setSaving(true);
+    setError("");
+    const res = await fetch("/api/requirements", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: editingId,
+        dayOfWeek: day,
+        startTime: start,
+        endTime: end,
+        format: format.trim(),
+        category,
+        room: room.trim(),
+      }),
+    });
+    const data = await res.json();
+    setSaving(false);
+    if (!res.ok) return setError(data.error ?? "Couldn't save that change.");
+    onChange(
+      requirements.map((r) => (r.id === editingId ? data.requirement : r))
+    );
+    setEditingId(null);
+    setFormat("");
+    setRoom("");
+  }
+
   async function removeRequirement(id: string) {
     const res = await fetch(`/api/requirements?id=${id}`, { method: "DELETE" });
     if (res.ok) onChange(requirements.filter((r) => r.id !== id));
@@ -111,7 +157,8 @@ export default function RequirementsPanel({
         title="Weekly template"
         description="The classes and shifts you run every week. This is the timetable the draft fills in — set it once and it carries month to month."
         action={
-          !adding && (
+          !adding &&
+          !editingId && (
             <Button variant="secondary" size="sm" onClick={() => setAdding(true)}>
               + Add entry
             </Button>
@@ -152,6 +199,14 @@ export default function RequirementsPanel({
                       r.end_time.slice(0, 5)
                     ) && <Badge tone="sand">Outside open hours</Badge>}
                   </div>
+                  <span className="flex shrink-0 items-center">
+                  <button
+                    onClick={() => startEditing(r)}
+                    aria-label={`Edit ${r.format} on ${DAY_LABELS[d]}`}
+                    className="flex h-9 items-center justify-center rounded-md px-2 text-sm font-medium text-clay transition-opacity hover:opacity-70 sm:opacity-0 sm:group-hover:opacity-100"
+                  >
+                    Edit
+                  </button>
                   <button
                     onClick={() => removeRequirement(r.id)}
                     aria-label={`Remove ${r.format} on ${DAY_LABELS[d]}`}
@@ -159,13 +214,14 @@ export default function RequirementsPanel({
                   >
                     ✕
                   </button>
+                  </span>
                 </div>
               ))}
             </div>
           </div>
         ))}
 
-        {visible.length === 0 && !adding && (
+        {visible.length === 0 && !adding && !editingId && (
           <Empty>
             {counts.all === 0
               ? "Nothing on the timetable yet — add the classes and shifts you run each week."
@@ -173,8 +229,11 @@ export default function RequirementsPanel({
           </Empty>
         )}
 
-        {adding && (
+        {(adding || editingId) && (
           <div className="bg-paper/60 px-6 py-5">
+            {editingId && (
+              <p className="eyebrow mb-3 text-sage">Editing this entry</p>
+            )}
             <div className="grid gap-3 sm:grid-cols-2">
               <Field
                 label="Kind"
@@ -259,20 +318,25 @@ export default function RequirementsPanel({
               <Button
                 variant="primary"
                 size="sm"
-                onClick={addRequirement}
+                onClick={editingId ? saveEdit : addRequirement}
                 disabled={saving || !format.trim()}
               >
-                {saving ? "Adding…" : "Add to timetable"}
+                {saving
+                  ? "Saving…"
+                  : editingId
+                    ? "Save changes"
+                    : "Add to timetable"}
               </Button>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => {
-                  setAdding(false);
+                  if (editingId) stopEditing();
+                  else setAdding(false);
                   setError("");
                 }}
               >
-                Done
+                {editingId ? "Cancel" : "Done"}
               </Button>
             </div>
           </div>
