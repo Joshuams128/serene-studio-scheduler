@@ -76,3 +76,9 @@ alter table class_requirements add column if not exists category text not null d
 alter table class_requirements drop constraint if exists class_requirements_category_check;
 alter table class_requirements add constraint class_requirements_category_check
   check (category in ('class', 'shift'));
+
+-- Who has already been emailed this schedule, so batch sending survives a
+-- reload or coming back to the app later. Accumulated and de-duplicated per
+-- person; re-sending to someone just updates their timestamp.
+-- [{ "instructorId": "...", "name": "...", "email": "...", "sentAt": "..." }, ...]
+alter table schedules add column if not exists sent_to jsonb not null default '[]';

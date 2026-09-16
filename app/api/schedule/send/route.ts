@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { isAuthed } from "@/lib/auth";
 import { supabaseAdmin } from "@/lib/supabase";
-import type { ClassRequirement, Instructor, Schedule } from "@/lib/types";
+import type { ClassRequirement, Instructor, Schedule, SentRecord } from "@/lib/types";
 import { categoryMap } from "@/lib/categories";
 import {
   buildRecipients,
@@ -64,6 +64,8 @@ export async function GET(req: Request) {
     periodStart,
     allAssignments: schedule.assignments,
     formatCategories,
+    // ?personal=1 previews the trimmed version with no studio-wide timetable.
+    includeEveryone: searchParams.get("personal") !== "1",
   });
 
   return new NextResponse(html, {
@@ -77,7 +79,7 @@ export async function POST(req: Request) {
   const configError = emailConfigError();
   if (configError) return NextResponse.json({ error: configError }, { status: 400 });
 
-  const { periodStart, instructorIds } = await req.json();
+  const { periodStart, instructorIds, includeEveryone } = await req.json();
   if (!periodStart) return NextResponse.json({ error: "Missing periodStart" }, { status: 400 });
 
   if (instructorIds !== undefined && !Array.isArray(instructorIds)) {
@@ -147,6 +149,7 @@ export async function POST(req: Request) {
     periodStart,
     allAssignments: schedule.assignments,
     formatCategories,
+    includeEveryone: includeEveryone !== false,
   });
 
   // Only stamp the schedule if at least one email actually went out, so a
@@ -155,11 +158,29 @@ export async function POST(req: Request) {
   let warning: string | undefined;
 
   if (result.sent.length > 0) {
+    const now = new Date().toISOString();
+
+    // Merge this batch into the running record, keyed by person so a re-send
+    // refreshes their timestamp instead of listing them twice.
+    const byId = new Map<string, SentRecord>(
+      (schedule.sent_to ?? []).map((r) => [r.instructorId, r])
+    );
+    for (const { instructor } of chosen) {
+      if (!result.sent.includes(instructor.name)) continue; // this one failed
+      byId.set(instructor.id, {
+        instructorId: instructor.id,
+        name: instructor.name,
+        email: instructor.email ?? "",
+        sentAt: now,
+      });
+    }
+
     const { data, error } = await supabaseAdmin()
       .from("schedules")
       .update({
-        sent_at: new Date().toISOString(),
+        sent_at: now,
         sent_to_count: result.sent.length,
+        sent_to: [...byId.values()],
       })
       .eq("period_start", periodStart)
       .select()
@@ -172,7 +193,7 @@ export async function POST(req: Request) {
       // say so, because the usual cause is the sent_at/sent_to_count columns
       // never being added (re-run supabase/schema.sql).
       warning =
-        "The emails went out, but recording when couldn't be saved — so “last sent” won't show. Re-run supabase/schema.sql to add the sent_at column.";
+        "The emails went out, but recording who couldn't be saved — so the “already emailed” list won't show. Re-run supabase/schema.sql to add the sent_at and sent_to columns.";
     }
   }
 

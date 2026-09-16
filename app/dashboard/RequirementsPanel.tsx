@@ -17,15 +17,14 @@ import {
 import {
   Badge,
   Button,
-  Card,
   CategoryTabs,
   Empty,
   Field,
   Input,
   Note,
-  SectionHeader,
   Select,
 } from "@/components/ui";
+import CollapsibleCard from "@/components/Collapsible";
 
 /** "06:30" + 60 -> "07:30" */
 function addMinutes(time: string, minutes: number): string {
@@ -151,20 +150,30 @@ export default function RequirementsPanel({
   })).filter((group) => group.classes.length > 0);
 
   return (
-    <Card>
-      <SectionHeader
-        eyebrow="Step 2"
-        title="Weekly template"
-        description="The classes and shifts you run every week. This is the timetable the draft fills in — set it once and it carries month to month."
-        action={
-          !adding &&
-          !editingId && (
-            <Button variant="secondary" size="sm" onClick={() => setAdding(true)}>
-              + Add entry
-            </Button>
-          )
-        }
-      />
+    <CollapsibleCard
+      id="template"
+      eyebrow="Step 2"
+      title="Weekly template"
+      description="The classes and shifts you run every week. This is the timetable the draft fills in — set it once and it carries month to month."
+      summary={
+        counts.all === 0
+          ? "Nothing set up yet"
+          : `${counts.all} entries · ${counts.class} ${
+              counts.class === 1 ? "class" : "classes"
+            } · ${counts.shift} ${counts.shift === 1 ? "shift" : "shifts"}`
+      }
+      // Set once and then mostly scrolled past — start folded once it has
+      // something in it.
+      defaultOpen={requirements.length === 0}
+      action={
+        !adding &&
+        !editingId && (
+          <Button variant="secondary" size="sm" onClick={() => setAdding(true)}>
+            + Add entry
+          </Button>
+        )
+      }
+    >
 
       {counts.all > 0 && (
         <div className="border-b border-mist/40 px-6 py-3">
@@ -342,6 +351,6 @@ export default function RequirementsPanel({
           </div>
         )}
       </div>
-    </Card>
+    </CollapsibleCard>
   );
 }

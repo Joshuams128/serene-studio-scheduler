@@ -13,7 +13,8 @@ import SiteHeader from "@/components/SiteHeader";
 import LogoutButton from "@/components/LogoutButton";
 import ScheduleGrid from "@/components/ScheduleGrid";
 import Tour, { TourButton, hasSeenTour, type TourStep } from "@/components/Tour";
-import { Button, Card, Note, SectionHeader } from "@/components/ui";
+import { Button, Note } from "@/components/ui";
+import CollapsibleCard from "@/components/Collapsible";
 import InstructorsPanel from "./InstructorsPanel";
 import RequirementsPanel from "./RequirementsPanel";
 
@@ -224,12 +225,20 @@ export default function DashboardClient({
           </div>
         </div>
 
-        <Card id="tour-schedule">
-          <SectionHeader
+        <div id="tour-schedule">
+          <CollapsibleCard
+            id="draft"
             eyebrow="Step 3"
             title={`Draft for ${monthLabel(periodStart)}`}
-            description="Every class in the month with an instructor pencilled in. Change anyone you like, then approve — or delete the draft and start again."
-          />
+            description="Every class and shift in the month with someone pencilled in. Change anyone you like, then approve — or delete the draft and start again."
+            summary={
+              schedule
+                ? `${schedule.assignments.length} entries · ${
+                    schedule.assignments.filter((a) => !a.instructorId).length
+                  } still need cover`
+                : "Nothing drafted yet"
+            }
+          >
           <div className="px-6 py-6">
             {genError && <Note tone="alert">{genError}</Note>}
 
@@ -261,7 +270,8 @@ export default function DashboardClient({
               )
             )}
           </div>
-        </Card>
+          </CollapsibleCard>
+        </div>
       </main>
 
       {tourOpen && (

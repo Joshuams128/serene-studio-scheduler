@@ -97,6 +97,15 @@ Then either:
   the month is blank again. **Re-draft schedule** in the header does the same
   thing in one step if you just want a different attempt.
 
+### Keeping it short
+
+The dashboard is one tall column, so every section folds: **Your team**, the
+**Weekly template** (which starts folded once it has entries, since it's set
+once), the **draft**, **"What the draft did"**, and each **week** of the draft
+with **Collapse all weeks / Expand all**. Every fold is remembered per browser,
+so the shape you leave it in is the shape you come back to. Fully folded, the
+October dashboard goes from roughly 21,000px of scrolling to a single screen.
+
 ### Sending it out
 
 At the bottom of the draft, **Send to instructors** emails the month to everyone
@@ -115,7 +124,20 @@ Before anything leaves:
   skipped, and their card shows *"no email on file"*.
 - If classes are still unfilled it says so — they'll appear as *"Needs cover"*.
 - Afterwards you get a per-person result, and the panel shows *"Last sent 2
-  hours ago to 6 instructors"* so you don't blast everyone twice by accident.
+  hours ago"* plus a running **"Already emailed (3 of 11): … · still to go: …"**
+  list. That list is stored on the schedule row, so it survives a reload and
+  is there when you come back later — use **"Select the N not yet emailed"** to
+  fill the next batch in one click. Re-sending to someone is always allowed;
+  it just refreshes their timestamp.
+
+Two toggles control the send. **Who** gets it — *Everyone* or *Choose who*, a
+checkbox list that opens with nobody ticked. And **what's in it** — *Their own
++ everyone's*, or *Just their own*, which trims the studio-wide timetable so a
+person sees only their own entries and nothing about anyone else.
+
+If you've edited the draft but not saved, the confirmation says so and the
+button becomes **"Save changes and send"** — the email is built from the saved
+draft, so unsaved edits would otherwise go out stale.
 
 Replies go to `SCHEDULE_REPLY_TO` if set, otherwise to the From address.
 
@@ -203,6 +225,9 @@ Change them in that one file and every default, hint and warning follows.
 - **Scheduling periods are calendar months**, identified everywhere by the ISO
   date of the first day (`2026-09-01`). Invite links carry `?period=` so an
   instructor's form always matches the month the owner is planning.
+- **`schedules.sent_to`** is a jsonb list of `{instructorId, name, email, sentAt}`,
+  merged per person on each send so batch sending survives a reload. A row from
+  before the column existed reads as an empty list.
 - **`class_requirements.category`** is `'class'` or `'shift'`, defaulting to
   `'class'` so everything that already existed keeps working. A format's category
   is looked up from the template; one that isn't on the template yet falls back

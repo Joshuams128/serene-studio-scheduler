@@ -6,6 +6,11 @@ import { assignmentKey } from "@/lib/types";
 import { formatDate, formatTime, monthLabel, weeksInMonth } from "@/lib/period";
 import { Badge, Button, CategoryTabs, Note, Select } from "@/components/ui";
 import {
+  Chevron,
+  usePersistedOpen,
+  usePersistedSet,
+} from "@/components/Collapsible";
+import {
   CATEGORY_LABEL,
   CATEGORY_PLURAL,
   toCategory,
@@ -50,6 +55,10 @@ export default function ScheduleGrid({
   );
   const [dirty, setDirty] = useState(false);
   const [filter, setFilter] = useState<CategoryFilter>("all");
+  // Often several paragraphs — folded by default, with the first line showing.
+  const [notesOpen, setNotesOpen] = usePersistedOpen("draft-notes", false);
+  // Which week groups are folded away, remembered per month.
+  const [closedWeeks, setClosedWeeks] = usePersistedSet(`draft-weeks-${periodStart}`);
   const [saving, setSaving] = useState<"save" | "approve" | "delete" | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [error, setError] = useState("");
@@ -59,9 +68,11 @@ export default function ScheduleGrid({
   // people. Also the safe way to do a first live test — tick just yourself.
   const [audience, setAudience] = useState<"all" | "some">("all");
   const [picked, setPicked] = useState<Set<string>>(new Set());
+  // What goes *in* the email, separate from who receives it: the whole month
+  // for context, or only that person's own entries.
+  const [scope, setScope] = useState<"full" | "personal">("full");
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState("");
-  const [sentSoFar, setSentSoFar] = useState<string[]>([]);
   const [sendResult, setSendResult] = useState<{
     sent: string[];
     failed: { name: string; email: string; error: string }[];
@@ -167,6 +178,7 @@ export default function ScheduleGrid({
         // Omitted entirely when sending to everyone, so the server keeps its
         // existing "all active people with an address" behaviour.
         ...(audience === "some" ? { instructorIds: [...picked] } : {}),
+        includeEveryone: scope === "full",
       }),
     });
     const data = await res.json();
@@ -180,8 +192,8 @@ export default function ScheduleGrid({
       failed: data.failed,
       warning: data.warning,
     });
-    setSentSoFar((prev) => [...new Set([...prev, ...(data.sent ?? [])])]);
-    // Clear the ticks so the next batch starts from a clean slate.
+    // Clear the ticks so the next batch starts from a clean slate. Who was
+    // emailed now lives on the schedule row, so it survives a reload.
     setPicked(new Set());
     setConfirmingSend(false);
     if (data.schedule) onSaved(data.schedule);
@@ -203,8 +215,11 @@ export default function ScheduleGrid({
   const recipients =
     audience === "all" ? withEmail : withEmail.filter((i) => picked.has(i.id));
 
-  // Anyone with an address who hasn't been emailed yet on this page.
-  const remaining = withEmail.filter((i) => !sentSoFar.includes(i.name));
+  // Everyone emailed so far, from the schedule row rather than page state, so
+  // this still reads correctly after a reload or on another device.
+  const sentTo = schedule.sent_to ?? [];
+  const sentIds = new Set(sentTo.map((r) => r.instructorId));
+  const remaining = withEmail.filter((i) => !sentIds.has(i.id));
 
   function togglePicked(id: string) {
     setPicked((prev) => {
@@ -230,10 +245,23 @@ export default function ScheduleGrid({
     <div className="space-y-5">
       {schedule.notes && (
         <Note tone="sand">
-          <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.08em]">
-            What the draft did
-          </span>
-          {schedule.notes}
+          <button
+            type="button"
+            onClick={() => setNotesOpen(!notesOpen)}
+            aria-expanded={notesOpen}
+            className="flex w-full items-center gap-2 text-left"
+          >
+            <Chevron open={notesOpen} />
+            <span className="text-xs font-semibold uppercase tracking-[0.08em]">
+              What the draft did
+            </span>
+            {!notesOpen && (
+              <span className="min-w-0 flex-1 truncate text-xs font-normal normal-case opacity-70">
+                {schedule.notes}
+              </span>
+            )}
+          </button>
+          {notesOpen && <p className="mt-1.5">{schedule.notes}</p>}
         </Note>
       )}
 
@@ -269,10 +297,56 @@ export default function ScheduleGrid({
         </p>
       )}
 
+      {weeks.length > 1 && (
+        <div className="flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={() => setClosedWeeks(new Set(weeks.map((w) => String(w.index))))}
+            className="py-1 text-xs font-medium text-clay transition-opacity hover:opacity-70"
+          >
+            Collapse all weeks
+          </button>
+          <button
+            type="button"
+            onClick={() => setClosedWeeks(new Set())}
+            className="py-1 text-xs font-medium text-clay transition-opacity hover:opacity-70"
+          >
+            Expand all
+          </button>
+        </div>
+      )}
+
       <div className="space-y-6">
-        {weeks.map((week) => (
+        {weeks.map((week) => {
+          const weekOpen = !closedWeeks.has(String(week.index));
+          const weekUnfilled = week.classes.filter((a) => !a.instructorId).length;
+          return (
           <div key={week.index}>
-            <p className="eyebrow mb-2 text-sage">{week.label}</p>
+            <button
+              type="button"
+              aria-expanded={weekOpen}
+              onClick={() => {
+                const next = new Set(closedWeeks);
+                if (weekOpen) next.add(String(week.index));
+                else next.delete(String(week.index));
+                setClosedWeeks(next);
+              }}
+              className="-mx-2 mb-2 flex w-[calc(100%+1rem)] items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-paper"
+            >
+              <Chevron open={weekOpen} />
+              <span className="eyebrow text-sage">{week.label}</span>
+              <span className="text-xs font-light text-sage">
+                {week.classes.length}
+                {weekUnfilled > 0 && (
+                  <span className="text-[#a4442c]">
+                    {" "}
+                    · {weekUnfilled} need cover
+                  </span>
+                )}
+              </span>
+            </button>
+            {weekOpen && (
+            <>
             <div className="space-y-2 sm:hidden">
               {week.classes.map((a) => (
                 <div
@@ -372,8 +446,11 @@ export default function ScheduleGrid({
                 </tbody>
               </table>
             </div>
+            </>
+            )}
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {error && <Note tone="alert">{error}</Note>}
@@ -455,14 +532,21 @@ export default function ScheduleGrid({
                 {schedule.sent_to_count === 1 ? "person" : "people"}.
               </p>
             )}
-            {sentSoFar.length > 0 && (
-              <p className="mt-1 text-xs font-light text-sage">
-                Emailed so far on this page ({sentSoFar.length}):{" "}
-                <span className="text-fern">{sentSoFar.join(", ")}</span>
-                {remaining.length > 0 && (
+            {sentTo.length > 0 && (
+              <p className="mt-1 text-xs font-light leading-relaxed text-sage">
+                Already emailed ({sentTo.length} of {withEmail.length}):{" "}
+                <span className="text-fern">
+                  {sentTo.map((r) => r.name).join(", ")}
+                </span>
+                {remaining.length > 0 ? (
                   <>
-                    {" · "}still to go: {remaining.map((i) => i.name).join(", ")}
+                    {" · "}
+                    <span className="text-[#a4442c]">
+                      still to go: {remaining.map((i) => i.name).join(", ")}
+                    </span>
                   </>
+                ) : (
+                  <span className="text-fern"> · everyone has it</span>
                 )}
               </p>
             )}
@@ -476,7 +560,9 @@ export default function ScheduleGrid({
                 className="flex-1 sm:flex-none"
                 onClick={() =>
                   window.open(
-                    `/api/schedule/send?periodStart=${encodeURIComponent(periodStart)}`,
+                    `/api/schedule/send?periodStart=${encodeURIComponent(
+                      periodStart
+                    )}${scope === "personal" ? "&personal=1" : ""}`,
                     "_blank",
                     "noopener"
                   )
@@ -540,6 +626,35 @@ export default function ScheduleGrid({
               ))}
             </div>
 
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span className="text-sm font-light text-fern">Include</span>
+              {(
+                [
+                  ["full", "Their own + everyone's"],
+                  ["personal", "Just their own"],
+                ] as const
+              ).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setScope(key)}
+                  aria-pressed={scope === key}
+                  className={`min-h-[2.25rem] rounded-full border px-3.5 py-1.5 text-sm transition-all duration-200 ${
+                    scope === key
+                      ? "border-clay bg-clay text-shell"
+                      : "border-mist bg-white text-fern hover:border-sage hover:text-ink"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1.5 text-xs font-light text-sage">
+              {scope === "full"
+                ? "Each person sees their own entries, then the rest of the month for context."
+                : "Each person sees only their own entries — nothing about anyone else."}
+            </p>
+
             {audience === "some" && (
               <div className="mt-3 rounded-xl border border-mist/50 bg-shell p-3">
                 <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
@@ -589,9 +704,12 @@ export default function ScheduleGrid({
                         <span className="font-light text-sage">
                           {i.email?.trim()}
                         </span>
-                        {sentSoFar.includes(i.name) && (
-                          <span className="ml-1.5 text-xs text-sage">
-                            ✓ emailed
+                        {sentIds.has(i.id) && (
+                          <span className="ml-1.5 whitespace-nowrap text-xs text-sage">
+                            ✓ emailed{" "}
+                            {timeAgo(
+                              sentTo.find((r) => r.instructorId === i.id)!.sentAt
+                            )}
                           </span>
                         )}
                       </span>
@@ -608,6 +726,11 @@ export default function ScheduleGrid({
             <p className="text-sm font-medium text-ink">
               Send the {monthLabel(periodStart)} schedule to{" "}
               {recipients.length} {recipients.length === 1 ? "person" : "people"}?
+            </p>
+            <p className="mt-0.5 text-xs font-light text-sage">
+              {scope === "full"
+                ? "Including the rest of the month for context."
+                : "Their own entries only."}
             </p>
             <ul className="mt-2 space-y-0.5">
               {recipients.map((i) => (
