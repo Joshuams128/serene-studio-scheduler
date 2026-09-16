@@ -16,16 +16,18 @@ export async function POST(req: Request) {
     { data: instructors, error: iErr },
     { data: submissions, error: sErr },
     { data: requirements, error: rErr },
-    { data: hoursRows, error: hErr },
+    { data: hoursRows },
   ] = await Promise.all([
     db.from("instructors").select("*").eq("active", true),
     db.from("availability_submissions").select("*").eq("period_start", periodStart),
     db.from("class_requirements").select("*").eq("active", true),
+    // Not fatal if this fails — normalizeStudioHours falls back to defaults,
+    // and a missing studio_hours table shouldn't block drafting a schedule.
     db.from("studio_hours").select("*"),
   ]);
 
-  if (iErr || sErr || rErr || hErr) {
-    return NextResponse.json({ error: (iErr || sErr || rErr || hErr)?.message }, { status: 500 });
+  if (iErr || sErr || rErr) {
+    return NextResponse.json({ error: (iErr || sErr || rErr)?.message }, { status: 500 });
   }
 
   if (!requirements || requirements.length === 0) {
