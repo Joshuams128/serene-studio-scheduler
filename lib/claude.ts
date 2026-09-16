@@ -105,7 +105,7 @@ const SCHEDULE_TOOL = {
       summary: {
         type: "string",
         description:
-          "A short plain-language summary for the studio owner: unfilled classes, anyone carrying a heavy load, any preference that couldn't be honoured.",
+          "A note for the studio owner, who isn't a scheduling expert: 2-3 short sentences, plain everyday words only. Cover just the headline points — classes left unfilled, anyone with a noticeably heavy load, any preference that couldn't be honoured. Skip anything that went fine. No jargon like 'availability window' or 'hard rule' — say what happened and who's affected, e.g. 'Tuesday's 6pm reformer class still needs someone' instead of 'one class could not be assigned'.",
       },
     },
     required: ["assignments", "summary"],
@@ -286,9 +286,7 @@ export async function generateSchedule({
   return {
     assignments,
     summary: violations.length
-      ? `${result.summary}\n\nAutomatically unassigned ${violations.length} class${
-          violations.length === 1 ? "" : "es"
-        } that broke a scheduling rule: ${violations.join("; ")}.`
+      ? `${result.summary}\n\nAlso left unfilled — ${violations.join("; ")}.`
       : result.summary,
   };
 }
@@ -322,7 +320,7 @@ export function enforceHardRules(
     const submission = submissions.find((s) => s.instructor_id === a.instructorId);
 
     if (!instructor || !submission) {
-      clear(a, "no availability submitted");
+      clear(a, "hadn't filled out their availability");
       continue;
     }
 
@@ -345,7 +343,7 @@ export function enforceHardRules(
         hhmm(slot.end) >= a.end
     );
     if (!covered) {
-      clear(a, "outside submitted availability");
+      clear(a, "wasn't available at that time");
       continue;
     }
 
