@@ -283,12 +283,96 @@ export async function generateSchedule({
     weekMap(periodStart)
   );
 
-  return {
-    assignments,
-    summary: violations.length
-      ? `${result.summary}\n\nAlso left unfilled — ${violations.join("; ")}.`
-      : result.summary,
-  };
+  // The model is good at preferences but not at exhaustively checking who is
+  // free, so a class it left empty may still have a qualified, available
+  // instructor. Fill those in code.
+  const filled = fillGaps(assignments, instructors, submissions, weekMap(periodStart));
+
+  const parts = [result.summary];
+  if (violations.length) parts.push(`Also left unfilled — ${violations.join("; ")}.`);
+  if (filled > 0) {
+    parts.push(
+      `${filled} class${filled === 1 ? " was" : "es were"} left empty by the first draft, ` +
+        `so we filled ${filled === 1 ? "it" : "them"} with someone free who teaches it. ` +
+        `Those are marked — double-check them against people's notes.`
+    );
+  }
+
+  return { assignments, summary: parts.join("\n\n") };
+}
+
+/** Does this instructor's submission allow them to take this class? */
+function canTake(
+  instructor: Instructor,
+  submission: AvailabilitySubmission,
+  a: ScheduleAssignment,
+  week: number | undefined
+): boolean {
+  if (instructor.formats_taught.length > 0 && !instructor.formats_taught.includes(a.format)) {
+    return false;
+  }
+  return submission.available_slots.some(
+    (slot) =>
+      slot.day === a.day &&
+      (slot.week == null || slot.week === week) &&
+      hhmm(slot.start) <= a.start &&
+      hhmm(slot.end) >= a.end
+  );
+}
+
+/**
+ * Give every still-empty class to someone who is qualified, free and not
+ * already teaching at that time — whoever has the lightest load so far, so
+ * work spreads evenly. Only touches empty classes; the model's own picks are
+ * never changed. Returns how many classes it filled.
+ */
+export function fillGaps(
+  assignments: ScheduleAssignment[],
+  instructors: Instructor[],
+  submissions: AvailabilitySubmission[],
+  weeks: Map<string, number>
+): number {
+  const subs = new Map(submissions.map((s) => [s.instructor_id, s] as const));
+  const load = new Map<string, number>();
+  for (const a of assignments) {
+    if (a.instructorId) load.set(a.instructorId, (load.get(a.instructorId) ?? 0) + 1);
+  }
+
+  const busy = (id: string, a: ScheduleAssignment) =>
+    assignments.some(
+      (o) =>
+        o.instructorId === id &&
+        o.date === a.date &&
+        a.start < o.end &&
+        o.start < a.end
+    );
+
+  let filled = 0;
+  const empty = assignments
+    .filter((a) => !a.instructorId)
+    .sort((a, b) => a.date.localeCompare(b.date) || a.start.localeCompare(b.start));
+
+  for (const a of empty) {
+    const week = weeks.get(a.date);
+    const candidates = instructors
+      .filter((i) => {
+        const sub = subs.get(i.id);
+        return sub && canTake(i, sub, a, week) && !busy(i.id, a);
+      })
+      .sort(
+        (x, y) =>
+          (load.get(x.id) ?? 0) - (load.get(y.id) ?? 0) || x.name.localeCompare(y.name)
+      );
+
+    const pick = candidates[0];
+    if (!pick) continue;
+    a.instructorId = pick.id;
+    a.instructorName = pick.name;
+    a.note = "Auto-filled: free and teaches this";
+    load.set(pick.id, (load.get(pick.id) ?? 0) + 1);
+    filled++;
+  }
+  return filled;
 }
 
 /**

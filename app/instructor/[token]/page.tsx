@@ -45,7 +45,10 @@ export default async function InstructorIntakePage({
         .eq("instructor_id", instructor.id)
         .eq("period_start", periodStart)
         .maybeSingle(),
-      db.from("class_requirements").select("format, category").eq("active", true),
+      db
+        .from("class_requirements")
+        .select("day_of_week, start_time, end_time, format, category")
+        .eq("active", true),
       db.from("studio_hours").select("*"),
     ]);
 
@@ -59,6 +62,15 @@ export default async function InstructorIntakePage({
     .map(([format, category]) => ({ format, category }))
     .sort((a, b) => a.format.localeCompare(b.format));
 
+  // The weekly timetable itself, so people can tap the classes they can take
+  // instead of translating them into hours.
+  const timetable = (requirements ?? []).map((r) => ({
+    day: r.day_of_week,
+    start: String(r.start_time).slice(0, 5),
+    end: String(r.end_time).slice(0, 5),
+    format: r.format,
+  }));
+
   return (
     <IntakeForm
       token={token}
@@ -66,6 +78,7 @@ export default async function InstructorIntakePage({
       name={instructor.name}
       formatsTaught={instructor.formats_taught ?? []}
       studioFormats={studioFormats}
+      timetable={timetable}
       existing={(existing as AvailabilitySubmission | null) ?? null}
       studioHours={normalizeStudioHours(hoursRows)}
     />
