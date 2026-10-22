@@ -329,6 +329,12 @@ export default function IntakeForm({
 
   const [formats, setFormats] = useState<string[]>(formatsTaught);
   const [customFormat, setCustomFormat] = useState("");
+  const [minPerWeek, setMinPerWeek] = useState(
+    existing?.min_per_week != null ? String(existing.min_per_week) : ""
+  );
+  const [maxPerWeek, setMaxPerWeek] = useState(
+    existing?.max_per_week != null ? String(existing.max_per_week) : ""
+  );
   const [preferences, setPreferences] = useState(existing?.preferences ?? "");
   const [status, setStatus] = useState<"idle" | "saving" | "done" | "error">(
     "idle"
@@ -413,6 +419,8 @@ export default function IntakeForm({
         availableSlots,
         preferences,
         formatsTaught: formats,
+        minPerWeek,
+        maxPerWeek,
       }),
     });
 
@@ -702,6 +710,41 @@ export default function IntakeForm({
               />
             </>
           )}
+        </Card>
+
+        {/* --- How much they want to work --- */}
+        <Card>
+          <SectionHeader
+            title="How much would you like to work?"
+            description="Optional. Per week, across classes and shifts. Leave blank for no preference."
+          />
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-3 px-6 py-5">
+            <span className="text-sm font-light text-fern">I&apos;d like at least</span>
+            <Input
+              type="number"
+              min={0}
+              max={40}
+              inputMode="numeric"
+              value={minPerWeek}
+              onChange={(e) => setMinPerWeek(e.target.value)}
+              className="w-20 py-2"
+              aria-label="Fewest classes per week"
+              placeholder="any"
+            />
+            <span className="text-sm font-light text-fern">and no more than</span>
+            <Input
+              type="number"
+              min={0}
+              max={40}
+              inputMode="numeric"
+              value={maxPerWeek}
+              onChange={(e) => setMaxPerWeek(e.target.value)}
+              className="w-20 py-2"
+              aria-label="Most classes per week"
+              placeholder="any"
+            />
+            <span className="text-sm font-light text-fern">a week.</span>
+          </div>
         </Card>
 
         {/* --- Preferences --- */}

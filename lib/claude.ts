@@ -158,6 +158,8 @@ export async function generateSchedule({
           end: hhmm(s.end),
         })),
       },
+      minClassesPerWeek: sub?.min_per_week ?? null,
+      maxClassesPerWeek: sub?.max_per_week ?? null,
       preferences: sub?.preferences ?? "",
       hasSubmitted: Boolean(sub),
     };
@@ -197,11 +199,17 @@ export async function generateSchedule({
       "3. Never double-book an instructor into two classes that overlap in time " +
       "on the same date.\n" +
       "4. An instructor with hasSubmitted: false must not be assigned anywhere.\n" +
-      "5. Return exactly one entry per class index, covering every index given.\n\n" +
+      "5. Return exactly one entry per class index, covering every index given.\n" +
+      "6. Never give an instructor more than their maxClassesPerWeek classes " +
+      "and shifts in any one week (null means no cap).\n\n" +
       "Soft goals — trade off sensibly when they conflict:\n" +
       "- Honour written preferences, including one-off dates. Preferences are " +
       "free text and may mention specific dates or weeks off; read them " +
       "carefully and respect them for those dates only.\n" +
+      "- Try to give each instructor at least their minClassesPerWeek in each " +
+      "week they are available enough to reach it (null means no minimum). " +
+      "Use everyone's availability: do not leave someone under their minimum " +
+      "while a class they could teach goes to a person with a heavier load.\n" +
       "- Spread classes fairly across instructors over the whole month, and keep " +
       "each instructor's week reasonably consistent.\n" +
       "- Prefer giving the same instructor the same recurring class each week, " +
@@ -338,6 +346,13 @@ export function fillGaps(
     if (a.instructorId) load.set(a.instructorId, (load.get(a.instructorId) ?? 0) + 1);
   }
 
+  const weekCount = new Map<string, number>(); // `${instructorId}|${week}`
+  for (const a of assignments) {
+    if (!a.instructorId) continue;
+    const k = `${a.instructorId}|${weeks.get(a.date)}`;
+    weekCount.set(k, (weekCount.get(k) ?? 0) + 1);
+  }
+
   const busy = (id: string, a: ScheduleAssignment) =>
     assignments.some(
       (o) =>
@@ -357,12 +372,22 @@ export function fillGaps(
     const candidates = instructors
       .filter((i) => {
         const sub = subs.get(i.id);
-        return sub && canTake(i, sub, a, week) && !busy(i.id, a);
+        if (!sub || !canTake(i, sub, a, week) || busy(i.id, a)) return false;
+        const cap = sub.max_per_week;
+        return cap == null || (weekCount.get(`${i.id}|${week}`) ?? 0) < cap;
       })
-      .sort(
-        (x, y) =>
-          (load.get(x.id) ?? 0) - (load.get(y.id) ?? 0) || x.name.localeCompare(y.name)
-      );
+      .sort((x, y) => {
+        // Anyone still under their weekly minimum goes first, then lightest load.
+        const short = (i: Instructor) => {
+          const min = subs.get(i.id)?.min_per_week ?? 0;
+          return (weekCount.get(`${i.id}|${week}`) ?? 0) < min ? 0 : 1;
+        };
+        return (
+          short(x) - short(y) ||
+          (load.get(x.id) ?? 0) - (load.get(y.id) ?? 0) ||
+          x.name.localeCompare(y.name)
+        );
+      });
 
     const pick = candidates[0];
     if (!pick) continue;
@@ -370,6 +395,7 @@ export function fillGaps(
     a.instructorName = pick.name;
     a.note = "Auto-filled: free and teaches this";
     load.set(pick.id, (load.get(pick.id) ?? 0) + 1);
+    weekCount.set(`${pick.id}|${week}`, (weekCount.get(`${pick.id}|${week}`) ?? 0) + 1);
     filled++;
   }
   return filled;
@@ -389,6 +415,7 @@ export function enforceHardRules(
 ): string[] {
   const problems: string[] = [];
   const taken = new Map<string, ScheduleAssignment[]>(); // `${instructorId}|${date}`
+  const perWeek = new Map<string, number>(); // `${instructorId}|${week}`
 
   const clear = (a: ScheduleAssignment, why: string) => {
     problems.push(`${a.instructorName} on ${a.date} (${why})`);
@@ -437,6 +464,15 @@ export function enforceHardRules(
       clear(a, "double-booked");
       continue;
     }
+
+    const cap = submission.max_per_week;
+    const weekKey = `${a.instructorId}|${week}`;
+    if (cap != null && (perWeek.get(weekKey) ?? 0) >= cap) {
+      clear(a, `over their ${cap}-a-week limit`);
+      continue;
+    }
+    perWeek.set(weekKey, (perWeek.get(weekKey) ?? 0) + 1);
+
     sameDay.push(a);
     taken.set(key, sameDay);
   }

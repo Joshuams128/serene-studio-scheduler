@@ -33,6 +33,9 @@ export type AvailabilitySubmission = {
   period_start: string;
   available_slots: AvailabilitySlot[];
   preferences: string;
+  /** Optional weekly load: a goal (min) and a hard cap (max). Null = no preference. */
+  min_per_week?: number | null;
+  max_per_week?: number | null;
   submitted_at: string;
 };
 
