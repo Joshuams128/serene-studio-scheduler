@@ -395,3 +395,119 @@ export async function sendScheduleEmails({
 
   return result;
 }
+
+/* --- Availability requests ------------------------------------------------ */
+
+export function renderAvailabilityEmail({
+  instructor,
+  periodStart,
+  link,
+  reminder,
+}: {
+  instructor: Instructor;
+  periodStart: string;
+  link: string;
+  /** true = a nudge to someone who hasn't answered yet. */
+  reminder: boolean;
+}): { subject: string; html: string; text: string } {
+  const month = monthLabel(periodStart);
+  const firstName = instructor.name.split(" ")[0];
+  const subject = reminder
+    ? `Reminder: when are you free in ${month}?`
+    : `When are you free in ${month}?`;
+  const intro = reminder
+    ? `Just a quick nudge — we haven't got your availability for ${month} yet, and we'd like to start building the schedule.`
+    : `We're building the ${month} schedule. Tap the classes you can take — it only takes a minute, and you can change your answers any time before the schedule goes out.`;
+
+  const html = `<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${esc(subject)}</title></head>
+<body style="margin:0;padding:0;background:${PAPER};font-family:${FONT};-webkit-font-smoothing:antialiased;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${PAPER};padding:24px 12px;">
+<tr><td align="center">
+  <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:${SHELL};border-radius:16px;overflow:hidden;border:1px solid ${MIST}66;">
+    <tr><td style="background:${INK};padding:26px 32px;">
+      <div style="font-size:19px;font-weight:300;letter-spacing:-0.01em;color:${CREAM};">Serene Pilates</div>
+      <div style="margin-top:4px;font-size:11px;font-weight:500;letter-spacing:0.14em;text-transform:uppercase;color:${SAND};">Availability</div>
+    </td></tr>
+    <tr><td style="padding:32px;">
+      <div style="font-size:28px;font-weight:300;letter-spacing:-0.02em;color:${INK};line-height:1.2;">${esc(month)}</div>
+      <p style="margin:20px 0 0;font-size:15px;color:${INK};">Hi ${esc(firstName)},</p>
+      <p style="margin:8px 0 0;font-size:15px;font-weight:300;line-height:1.6;color:${FERN};">${esc(intro)}</p>
+      <p style="margin:28px 0 0;">
+        <a href="${esc(link)}" style="display:inline-block;background:${CLAY};color:${SHELL};text-decoration:none;font-size:15px;font-weight:500;padding:13px 26px;border-radius:999px;">Share my availability</a>
+      </p>
+      <p style="margin:24px 0 0;font-size:13px;font-weight:300;line-height:1.6;color:${SAGE};">
+        This link is just for you, so please don't forward it. If the button doesn't work, paste this into your browser:<br>
+        <span style="word-break:break-all;">${esc(link)}</span>
+      </p>
+    </td></tr>
+  </table>
+</td></tr>
+</table>
+</body></html>`;
+
+  const text = [
+    `Serene Pilates — ${month}`,
+    "",
+    `Hi ${firstName},`,
+    "",
+    intro,
+    "",
+    `Share your availability: ${link}`,
+    "",
+    "This link is just for you, so please don't forward it.",
+  ].join("\n");
+
+  return { subject, html, text };
+}
+
+export async function sendAvailabilityEmails({
+  instructors,
+  periodStart,
+  origin,
+  reminder,
+}: {
+  instructors: Instructor[];
+  periodStart: string;
+  origin: string;
+  reminder: boolean;
+}): Promise<SendResult> {
+  const resend = new Resend(process.env.RESEND_API_KEY);
+  const from = process.env.SCHEDULE_FROM_EMAIL as string;
+  const replyTo = process.env.SCHEDULE_REPLY_TO?.trim() || undefined;
+
+  const outcomes = await Promise.allSettled(
+    instructors.map(async (instructor) => {
+      const link = `${origin}/instructor/${instructor.invite_token}?period=${periodStart}`;
+      const { subject, html, text } = renderAvailabilityEmail({
+        instructor,
+        periodStart,
+        link,
+        reminder,
+      });
+      const { error } = await resend.emails.send({
+        from,
+        to: instructor.email as string,
+        replyTo,
+        subject,
+        html,
+        text,
+      });
+      if (error) throw new Error(error.message ?? "Rejected by Resend");
+    })
+  );
+
+  const result: SendResult = { sent: [], failed: [] };
+  outcomes.forEach((outcome, i) => {
+    const instructor = instructors[i];
+    if (outcome.status === "fulfilled") result.sent.push(instructor.name);
+    else
+      result.failed.push({
+        name: instructor.name,
+        email: instructor.email ?? "",
+        error: outcome.reason instanceof Error ? outcome.reason.message : "Failed to send",
+      });
+  });
+  return result;
+}

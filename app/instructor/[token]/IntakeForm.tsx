@@ -8,6 +8,7 @@ import {
   DAY_LABELS,
   dayOfDate,
   formatDateShort,
+  formatTime,
   monthLabel,
   weeksInMonth,
   type Day,
@@ -20,6 +21,7 @@ import {
   categoryMap,
   type Category,
 } from "@/lib/categories";
+import { addRange, covers, subtractRange } from "@/lib/availability";
 import SiteHeader from "@/components/SiteHeader";
 import {
   Badge,
@@ -33,6 +35,8 @@ import {
 } from "@/components/ui";
 
 type Range = { start: string; end: string };
+/** One class on the studio's weekly timetable. */
+type TimetableClass = { day: string; start: string; end: string; format: string };
 type DayMap = Record<Day, Range[]>;
 
 /** Turning a day on offers the studio's full opening hours for it. */
@@ -85,6 +89,8 @@ function DayScheduleEditor({
   days,
   dateFor,
   studioHours,
+  timetable,
+  exact,
 }: {
   value: DayMap;
   onChange: (next: DayMap) => void;
@@ -93,6 +99,10 @@ function DayScheduleEditor({
   /** Optional real date to show beside each day, in per-week mode. */
   dateFor?: (day: Day) => string | undefined;
   studioHours: StudioHours;
+  /** Classes to offer as one-tap chips (already limited to what they cover). */
+  timetable: TimetableClass[];
+  /** Show the raw time-range editor instead of class chips. */
+  exact: boolean;
 }) {
   function setRanges(day: Day, ranges: Range[]) {
     onChange({ ...value, [day]: ranges });
@@ -104,6 +114,53 @@ function DayScheduleEditor({
         const ranges = value[day];
         const on = ranges.length > 0;
         const date = dateFor?.(day);
+        const dayClasses = timetable.filter((c) => c.day === day);
+
+        if (!exact) {
+          return (
+            <div key={day} className="px-6 py-4">
+              <span className="text-sm font-medium text-ink">
+                {DAY_LABELS[day]}
+                {date && (
+                  <span className="ml-2 text-xs font-light text-sage">{date}</span>
+                )}
+              </span>
+              {dayClasses.length === 0 ? (
+                <p className="mt-1 text-xs font-light text-sage">
+                  No classes this day.
+                </p>
+              ) : (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {dayClasses.map((c) => {
+                    const picked = ranges.some((r) => covers(r, c.start, c.end));
+                    return (
+                      <button
+                        key={`${c.start}-${c.end}-${c.format}`}
+                        type="button"
+                        aria-pressed={picked}
+                        onClick={() =>
+                          setRanges(
+                            day,
+                            picked
+                              ? subtractRange(ranges, c.start, c.end)
+                              : addRange(ranges, c.start, c.end)
+                          )
+                        }
+                        className={`min-h-[2.5rem] rounded-full border px-4 py-2 text-sm transition-all duration-200 ${
+                          picked
+                            ? "border-clay bg-clay text-shell shadow-sm"
+                            : "border-mist bg-white text-fern hover:border-sage hover:text-ink"
+                        }`}
+                      >
+                        {formatTime(c.start)} {c.format}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        }
 
         return (
           <div key={day} className="px-6 py-4">
@@ -218,6 +275,7 @@ export default function IntakeForm({
   name,
   formatsTaught,
   studioFormats,
+  timetable,
   existing,
   studioHours,
 }: {
@@ -227,6 +285,8 @@ export default function IntakeForm({
   formatsTaught: string[];
   /** What the studio runs, with the category each format belongs to. */
   studioFormats: { format: string; category: string }[];
+  /** The weekly timetable, offered as tappable classes. */
+  timetable: TimetableClass[];
   existing: AvailabilitySubmission | null;
   studioHours: StudioHours;
 }) {
@@ -250,8 +310,31 @@ export default function IntakeForm({
   );
   const [activeWeek, setActiveWeek] = useState(0);
 
+  // Tapping classes is the default. Anyone whose saved hours don't line up
+  // with the timetable (or who just wants control) gets the raw hours editor.
+  const [exact, setExact] = useState(() => {
+    if (timetable.length === 0) return true;
+    const saved = existingSlots.map((s) => ({
+      ...s,
+      start: s.start.slice(0, 5),
+      end: s.end.slice(0, 5),
+    }));
+    return saved.some(
+      (s) =>
+        !timetable.some(
+          (c) => c.day === s.day && s.start <= c.start && s.end >= c.end
+        )
+    );
+  });
+
   const [formats, setFormats] = useState<string[]>(formatsTaught);
   const [customFormat, setCustomFormat] = useState("");
+  const [minPerWeek, setMinPerWeek] = useState(
+    existing?.min_per_week != null ? String(existing.min_per_week) : ""
+  );
+  const [maxPerWeek, setMaxPerWeek] = useState(
+    existing?.max_per_week != null ? String(existing.max_per_week) : ""
+  );
   const [preferences, setPreferences] = useState(existing?.preferences ?? "");
   const [status, setStatus] = useState<"idle" | "saving" | "done" | "error">(
     "idle"
@@ -297,6 +380,13 @@ export default function IntakeForm({
     setCustomFormat("");
   }
 
+  // Chips only offer what this person says they cover; with nothing ticked
+  // yet, show everything rather than an empty list.
+  const offered =
+    formats.length > 0
+      ? timetable.filter((c) => formats.includes(c.format))
+      : timetable;
+
   const totalRanges = repeatsWeekly
     ? countRanges(weekly)
     : byWeek.reduce((n, w) => n + countRanges(w), 0);
@@ -329,6 +419,8 @@ export default function IntakeForm({
         availableSlots,
         preferences,
         formatsTaught: formats,
+        minPerWeek,
+        maxPerWeek,
       }),
     });
 
@@ -497,6 +589,23 @@ export default function IntakeForm({
             </span>
           </label>
 
+          {timetable.length > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-mist/40 px-6 py-3">
+              <span className="text-sm font-light text-fern">
+                {exact
+                  ? "Setting exact hours."
+                  : "Tap every class you can take."}
+              </span>
+              <button
+                type="button"
+                onClick={() => setExact((v) => !v)}
+                className="py-1.5 text-sm font-medium text-clay transition-opacity hover:opacity-70"
+              >
+                {exact ? "Pick from the class list" : "Set exact hours instead"}
+              </button>
+            </div>
+          )}
+
           {repeatsWeekly ? (
             <>
               <div className="flex justify-end px-6 pt-4">
@@ -513,6 +622,8 @@ export default function IntakeForm({
                 onChange={setWeekly}
                 days={DAYS.slice()}
                 studioHours={studioHours}
+                timetable={offered}
+                exact={exact}
               />
             </>
           ) : (
@@ -594,9 +705,46 @@ export default function IntakeForm({
                   return date ? formatDateShort(date) : undefined;
                 }}
                 studioHours={studioHours}
+                timetable={offered}
+                exact={exact}
               />
             </>
           )}
+        </Card>
+
+        {/* --- How much they want to work --- */}
+        <Card>
+          <SectionHeader
+            title="How much would you like to work?"
+            description="Optional. Per week, across classes and shifts. Leave blank for no preference."
+          />
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-3 px-6 py-5">
+            <span className="text-sm font-light text-fern">I&apos;d like at least</span>
+            <Input
+              type="number"
+              min={0}
+              max={40}
+              inputMode="numeric"
+              value={minPerWeek}
+              onChange={(e) => setMinPerWeek(e.target.value)}
+              className="w-20 py-2"
+              aria-label="Fewest classes per week"
+              placeholder="any"
+            />
+            <span className="text-sm font-light text-fern">and no more than</span>
+            <Input
+              type="number"
+              min={0}
+              max={40}
+              inputMode="numeric"
+              value={maxPerWeek}
+              onChange={(e) => setMaxPerWeek(e.target.value)}
+              className="w-20 py-2"
+              aria-label="Most classes per week"
+              placeholder="any"
+            />
+            <span className="text-sm font-light text-fern">a week.</span>
+          </div>
         </Card>
 
         {/* --- Preferences --- */}
@@ -628,7 +776,7 @@ export default function IntakeForm({
           </Button>
           {totalRanges === 0 && (
             <span className="text-sm font-light text-sage">
-              Turn on at least one day first.
+              {exact ? "Turn on at least one day first." : "Pick at least one class first."}
             </span>
           )}
         </div>

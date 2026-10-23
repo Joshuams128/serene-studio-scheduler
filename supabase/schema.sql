@@ -106,3 +106,9 @@ values
 on conflict (day_of_week) do nothing;
 
 alter table studio_hours enable row level security;
+
+-- How much each person wants to work, per week. Both optional: null means "no
+-- preference". The max is a hard cap when drafting; the min is a goal. Safe to
+-- re-run over an existing database.
+alter table availability_submissions add column if not exists min_per_week integer check (min_per_week >= 0);
+alter table availability_submissions add column if not exists max_per_week integer check (max_per_week >= 0);

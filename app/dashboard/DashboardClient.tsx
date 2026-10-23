@@ -255,6 +255,7 @@ export default function DashboardClient({
                 periodStart={periodStart}
                 schedule={schedule}
                 instructors={instructors}
+                submissions={submissions}
                 onSaved={setSchedule}
                 onDeleted={() => {
                   setSchedule(null);
