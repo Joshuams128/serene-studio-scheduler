@@ -1,7 +1,13 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { Instructor, Schedule, ScheduleAssignment } from "@/lib/types";
+import type {
+  AvailabilitySubmission,
+  Instructor,
+  Schedule,
+  ScheduleAssignment,
+} from "@/lib/types";
+import { blockedReason } from "@/lib/eligibility";
 import { assignmentKey } from "@/lib/types";
 import { formatDate, formatTime, monthLabel, weeksInMonth } from "@/lib/period";
 import { Badge, Button, CategoryTabs, Note, Select } from "@/components/ui";
@@ -41,12 +47,14 @@ export default function ScheduleGrid({
   periodStart,
   schedule,
   instructors,
+  submissions,
   onSaved,
   onDeleted,
 }: {
   periodStart: string;
   schedule: Schedule;
   instructors: Instructor[];
+  submissions: AvailabilitySubmission[];
   onSaved: (s: Schedule) => void;
   onDeleted: () => void;
 }) {
@@ -125,6 +133,98 @@ export default function ScheduleGrid({
       )
     );
     setDirty(true);
+  }
+
+  const weekOf = useMemo(() => {
+    const map = new Map<string, number>();
+    weeksInMonth(periodStart).forEach((w, i) =>
+      w.dates.forEach((d) => map.set(d, i + 1))
+    );
+    return map;
+  }, [periodStart]);
+
+  /** Everyone, split into who could take this class and who couldn't (and why). */
+  function whoCanTake(a: ScheduleAssignment) {
+    const total = (id: string) => assignments.filter((x) => x.instructorId === id).length;
+    const free: { instructor: Instructor; count: number }[] = [];
+    const blocked: { instructor: Instructor; why: string }[] = [];
+    for (const i of instructors) {
+      if (i.id === a.instructorId) continue;
+      const why = blockedReason(
+        i,
+        submissions.find((s) => s.instructor_id === i.id),
+        a,
+        assignments,
+        weekOf
+      );
+      if (why) blocked.push({ instructor: i, why });
+      else free.push({ instructor: i, count: total(i.id) });
+    }
+    free.sort((x, y) => x.count - y.count || x.instructor.name.localeCompare(y.instructor.name));
+    return { free, blocked };
+  }
+
+  /** The dropdown, with people who can actually take the class listed first. */
+  function instructorSelect(a: ScheduleAssignment, className?: string) {
+    const { free, blocked } = whoCanTake(a);
+    const current = instructors.find((i) => i.id === a.instructorId);
+    return (
+      <Select
+        value={a.instructorId ?? ""}
+        onChange={(e) => assign(a, e.target.value)}
+        className={className}
+        aria-label={`Instructor for ${a.format} on ${formatDate(a.date)}`}
+      >
+        <option value="">— Needs cover —</option>
+        {current && <option value={current.id}>{current.name}</option>}
+        {free.length > 0 && (
+          <optgroup label="Free and teaches this">
+            {free.map(({ instructor, count }) => (
+              <option key={instructor.id} value={instructor.id}>
+                {instructor.name} · {count} so far
+              </option>
+            ))}
+          </optgroup>
+        )}
+        {blocked.length > 0 && (
+          <optgroup label="Can't — pick anyway to override">
+            {blocked.map(({ instructor, why }) => (
+              <option key={instructor.id} value={instructor.id}>
+                {instructor.name} — {why}
+              </option>
+            ))}
+          </optgroup>
+        )}
+      </Select>
+    );
+  }
+
+  /** One-tap fixes under a class that still needs someone. */
+  function suggestions(a: ScheduleAssignment) {
+    if (a.instructorId) return null;
+    const { free } = whoCanTake(a);
+    if (free.length === 0) {
+      return (
+        <p className="mt-1.5 text-xs font-light text-sage">
+          No one who teaches this is free then — you&apos;ll need to ask around.
+        </p>
+      );
+    }
+    return (
+      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+        <span className="text-xs font-light text-sage">Free:</span>
+        {free.slice(0, 4).map(({ instructor, count }) => (
+          <button
+            key={instructor.id}
+            type="button"
+            onClick={() => assign(a, instructor.id)}
+            className="rounded-full border border-mist bg-white px-2.5 py-1 text-xs text-fern transition-colors hover:border-clay hover:text-ink"
+          >
+            {instructor.name.split(" ")[0]} · {count}
+          </button>
+        ))}
+      </div>
+    );
   }
 
   async function save(status?: "approved"): Promise<boolean> {
@@ -379,19 +479,8 @@ export default function ScheduleGrid({
                       {a.note}
                     </p>
                   )}
-                  <Select
-                    value={a.instructorId ?? ""}
-                    onChange={(e) => assign(a, e.target.value)}
-                    className="mt-2.5 w-full"
-                    aria-label={`Instructor for ${a.format} on ${formatDate(a.date)}`}
-                  >
-                    <option value="">— Needs cover —</option>
-                    {instructors.map((i) => (
-                      <option key={i.id} value={i.id}>
-                        {i.name}
-                      </option>
-                    ))}
-                  </Select>
+                  {instructorSelect(a, "mt-2.5 w-full")}
+                  {suggestions(a)}
                 </div>
               ))}
             </div>
@@ -427,19 +516,8 @@ export default function ScheduleGrid({
                         )}
                       </td>
                       <td className="w-56 py-2 pr-4 align-middle">
-                        <Select
-                          value={a.instructorId ?? ""}
-                          onChange={(e) => assign(a, e.target.value)}
-                          className="py-1.5 text-sm"
-                          aria-label={`Instructor for ${a.format} on ${formatDate(a.date)}`}
-                        >
-                          <option value="">— Needs cover —</option>
-                          {instructors.map((i) => (
-                            <option key={i.id} value={i.id}>
-                              {i.name}
-                            </option>
-                          ))}
-                        </Select>
+                        {instructorSelect(a, "py-1.5 text-sm")}
+                        {suggestions(a)}
                       </td>
                     </tr>
                   ))}

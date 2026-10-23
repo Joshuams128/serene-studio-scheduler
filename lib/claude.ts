@@ -8,6 +8,7 @@ import type {
 import { isPerWeek } from "./types";
 import { datesInMonth, dayOfDate, monthLabel, weeksInMonth } from "./period";
 import { studioHoursSummary, type StudioHours } from "./studio";
+import { unavailableReason } from "./eligibility";
 import { CATEGORY_LABEL, toCategory, type Category } from "./categories";
 
 /** Postgres `time` comes back as "09:00:00"; everything here compares "09:00". */
@@ -316,16 +317,7 @@ function canTake(
   a: ScheduleAssignment,
   week: number | undefined
 ): boolean {
-  if (instructor.formats_taught.length > 0 && !instructor.formats_taught.includes(a.format)) {
-    return false;
-  }
-  return submission.available_slots.some(
-    (slot) =>
-      slot.day === a.day &&
-      (slot.week == null || slot.week === week) &&
-      hhmm(slot.start) <= a.start &&
-      hhmm(slot.end) >= a.end
-  );
+  return unavailableReason(instructor, submission, a, week) === null;
 }
 
 /**
