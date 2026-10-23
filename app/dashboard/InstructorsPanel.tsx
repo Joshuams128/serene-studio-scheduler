@@ -20,6 +20,7 @@ import {
   Empty,
   Field,
   Input,
+  Note,
 } from "@/components/ui";
 import CollapsibleCard from "@/components/Collapsible";
 
@@ -47,6 +48,8 @@ export default function InstructorsPanel({
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [mailing, setMailing] = useState(false);
+  const [mailNote, setMailNote] = useState<{ tone: "sage" | "alert"; text: string } | null>(null);
 
   async function addInstructor() {
     if (!name.trim()) return;
@@ -136,6 +139,41 @@ export default function InstructorsPanel({
     setTimeout(() => setCopiedId((c) => (c === instructor.id ? null : c)), 2000);
   }
 
+  /** Email private links: to everyone, only the people still waiting, or one person. */
+  async function emailLinks(body: { target?: "all" | "waiting"; instructorIds?: string[] }) {
+    setMailing(true);
+    setMailNote(null);
+    try {
+      const res = await fetch("/api/availability/request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ periodStart, ...body }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setMailNote({ tone: "alert", text: data.error ?? "Couldn't send those emails." });
+        return;
+      }
+      const failed = (data.failed ?? []) as { name: string; error: string }[];
+      const sent = (data.sent ?? []) as string[];
+      setMailNote(
+        failed.length > 0
+          ? {
+              tone: "alert",
+              text: `Sent to ${sent.length}. Couldn't reach ${failed
+                .map((f) => f.name)
+                .join(", ")} — check their email address.`,
+            }
+          : {
+              tone: "sage",
+              text: `Sent to ${sent.length} ${sent.length === 1 ? "person" : "people"}: ${sent.join(", ")}.`,
+            }
+      );
+    } finally {
+      setMailing(false);
+    }
+  }
+
   // One roster, tagged by what each person covers — never two lists.
   const formatCategories = categoryMap(requirements);
   const coversFilter = (i: Instructor) =>
@@ -157,6 +195,11 @@ export default function InstructorsPanel({
   const submittedCount = instructors.filter((i) =>
     submissions.some((s) => s.instructor_id === i.id)
   ).length;
+
+  const waitingWithEmail = instructors.filter(
+    (i) => i.email?.trim() && !submissions.some((s) => s.instructor_id === i.id)
+  );
+  const anyEmail = instructors.some((i) => i.email?.trim());
 
   return (
     <CollapsibleCard
@@ -185,6 +228,40 @@ export default function InstructorsPanel({
             counts={counts}
             allLabel="Everyone"
           />
+        </div>
+      )}
+
+      {anyEmail && (
+        <div className="space-y-2 border-b border-mist/40 px-6 py-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={mailing}
+              onClick={() => {
+                if (
+                  window.confirm(
+                    `Email ${monthLabel(periodStart)} availability links to everyone with an email address?`
+                  )
+                ) {
+                  emailLinks({ target: "all" });
+                }
+              }}
+            >
+              {mailing ? "Sending…" : "Email everyone their link"}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={mailing || waitingWithEmail.length === 0}
+              onClick={() => emailLinks({ target: "waiting" })}
+            >
+              {waitingWithEmail.length > 0
+                ? `Remind ${waitingWithEmail.length} who haven’t submitted`
+                : "Everyone has submitted"}
+            </Button>
+          </div>
+          {mailNote && <Note tone={mailNote.tone}>{mailNote.text}</Note>}
         </div>
       )}
 
@@ -247,6 +324,16 @@ export default function InstructorsPanel({
                   >
                     {copiedId === instructor.id ? "Copied ✓" : "Copy link"}
                   </Button>
+                  {instructor.email?.trim() && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={mailing}
+                      onClick={() => emailLinks({ instructorIds: [instructor.id] })}
+                    >
+                      Email link
+                    </Button>
+                  )}
                   <Button
                     variant="ghost"
                     size="sm"
